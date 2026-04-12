@@ -5,12 +5,20 @@
     {
       "name": "harbor-tools",
       "version": "1.1.0",
-      "description": "ROCK 平台 Harbor Agent 评测工具集，支持 Agent SDK 开发、沙箱状态查询、Benchmark 调试等",
+      "description": "Harbor Benchmark 运行分析与调试工具集，支持沙箱状态查询、Trial 日志分析、Reward 查看等",
       "path": "plugins/harbor-tools",
       "skills": [
-        "rock-agent-sdk",
         "harbor-sandbox-status",
         "harbor-debug"
+      ]
+    },
+    {
+      "name": "rock-agent-sdk",
+      "version": "1.0.0",
+      "description": "ROCK Agent SDK 开发指南，辅助开发者编写 Agent 配置、创建 Benchmark 评测 Job、运行并分析结果",
+      "path": "plugins/rock-agent-sdk",
+      "skills": [
+        "rock-agent-sdk"
       ]
     }
   ]

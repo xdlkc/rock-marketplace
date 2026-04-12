@@ -8,19 +8,21 @@ ROCK 平台 AI Agent 技能插件库，为 Claude Code 等 AI 工具提供针对
 
 ```
 rock-agents/
-├── plugins/                    # 插件目录，每个子目录是一个独立插件
-│   └── harbor-tools/           # ROCK Harbor Agent 评测工具集
-│       ├── plugin.json         # 插件元数据
-│       ├── hooks/              # 钩子配置
-│       │   └── hooks.json
-│       └── skills/             # 技能集合
-│           ├── rock-agent-sdk/     # Agent SDK 开发指南
-│           ├── harbor-sandbox-status/ # 沙箱状态查询
-│           └── harbor-debug/        # Benchmark 调试
-├── marketplace/                # Marketplace 索引
-│   └── registry.json           # 已发布插件注册表
-└── docs/                       # 文档
-    └── plugin-spec.md          # 插件规范
+├── plugins/                        # 插件目录，每个子目录是一个独立插件
+│   ├── rock-agent-sdk/             # Agent SDK 开发指南
+│   │   ├── plugin.json
+│   │   ├── hooks/
+│   │   └── skills/rock-agent-sdk/
+│   └── harbor-tools/               # Harbor Benchmark 分析与调试
+│       ├── plugin.json
+│       ├── hooks/
+│       └── skills/
+│           ├── harbor-sandbox-status/
+│           └── harbor-debug/
+├── marketplace/                    # Marketplace 索引
+│   └── registry.json
+└── docs/
+    └── plugin-spec.md
 ```
 
 ## 安装插件
@@ -51,12 +53,18 @@ ln -s ~/Code/rock-agents/plugins/harbor-tools ~/.claude/plugins/harbor-tools
 
 | 插件 | 描述 | 技能数 |
 |------|------|--------|
-| `harbor-tools` | ROCK Harbor Agent 评测工具集 | 3 |
+| `rock-agent-sdk` | ROCK Agent SDK 开发指南 | 1 |
+| `harbor-tools` | Harbor Benchmark 运行分析与调试 | 2 |
 
-### harbor-tools 技能列表
+### 插件详情
 
+**rock-agent-sdk**
 | 技能 | 说明 |
 |------|------|
 | `rock-agent-sdk` | 辅助开发者基于 ROCK Agent SDK 开发 Agent Benchmark 评测 |
+
+**harbor-tools**
+| 技能 | 说明 |
+|------|------|
 | `harbor-sandbox-status` | 查询 ROCK 沙箱中 Harbor 任务执行状态 |
 | `harbor-debug` | Harbor Benchmark 运行问题排查和诊断 |
