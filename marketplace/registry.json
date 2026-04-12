@@ -1,0 +1,16 @@
+{
+  "registry": "chatflow/rock-agents",
+  "updated_at": "2026-04-12",
+  "plugins": [
+    {
+      "name": "harbor-tools",
+      "version": "1.0.0",
+      "description": "Harbor agent bench 任务分析与调试工具集，支持沙箱状态查询、trial 日志分析、reward 查看等",
+      "path": "plugins/harbor-tools",
+      "skills": [
+        "harbor-sandbox-status",
+        "harbor-debug"
+      ]
+    }
+  ]
+}
