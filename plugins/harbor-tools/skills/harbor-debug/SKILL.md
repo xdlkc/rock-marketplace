@@ -7,6 +7,10 @@ description: Harbor agent bench 运行排查技能。当 harbor agent 跑 benchm
 
 当 Harbor 跑 bench 出问题时，别瞎猜——先把证据收全，再做诊断。
 
+## 背景
+
+Harbor 是运行在 ROCK 沙箱中的 Agent Benchmark 评测框架。本技能排查 Harbor 评测运行中的各类问题，产物路径取决于启动方式：`harbor run` 对应 `./jobs/`，ROCK 平台对应 `/data/logs/user-defined/`。
+
 ## 工作流程
 
 ### Phase 1：定位产物目录

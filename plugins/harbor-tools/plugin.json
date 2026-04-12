@@ -1,9 +1,10 @@
 {
   "name": "harbor-tools",
-  "version": "1.0.0",
-  "description": "Harbor agent bench 任务分析与调试工具集，支持沙箱状态查询、trial 日志分析、reward 查看等",
+  "version": "1.1.0",
+  "description": "ROCK 平台 Harbor Agent 评测工具集，支持 Agent SDK 开发、沙箱状态查询、Benchmark 调试等",
   "author": "keluo",
   "skills": [
+    "rock-agent-sdk",
     "harbor-sandbox-status",
     "harbor-debug"
   ]
