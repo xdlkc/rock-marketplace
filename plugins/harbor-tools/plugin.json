@@ -2,9 +2,8 @@
   "name": "harbor-tools",
   "version": "1.1.0",
   "description": "Harbor Benchmark 运行分析与调试工具集，支持沙箱状态查询、Trial 日志分析、Reward 查看等",
-  "author": "keluo",
-  "skills": [
-    "harbor-sandbox-status",
-    "harbor-debug"
-  ]
+  "author": {
+    "name": "xdlkc"
+  },
+  "homepage": "https://github.com/xdlkc/rock-agents"
 }
