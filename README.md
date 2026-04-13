@@ -13,12 +13,11 @@ rock-agents/
 │   │   ├── plugin.json
 │   │   ├── hooks/
 │   │   └── skills/rock-agent-sdk/
-│   └── harbor-tools/               # Harbor Benchmark 分析与调试
+│   └── rock-agent-harbor/          # Harbor Benchmark 分析与调试
 │       ├── plugin.json
 │       ├── hooks/
 │       └── skills/
-│           ├── harbor-sandbox-status/
-│           └── harbor-debug/
+│           └── rock-agent-harbor-sandbox-debug/
 ├── marketplace/                    # Marketplace 索引
 │   └── registry.json
 └── docs/
@@ -31,13 +30,13 @@ rock-agents/
 
 ```
 /plugin marketplace add xdlkc/rock-agents
-/plugin install harbor-tools@rock-agents
+/plugin install rock-agent-harbor@rock-agents
 ```
 
 或手动安装（将插件目录软链到 `~/.claude/plugins/`）：
 
 ```bash
-ln -s ~/Code/rock-agents/plugins/harbor-tools ~/.claude/plugins/harbor-tools
+ln -s ~/Code/rock-agents/plugins/rock-agent-harbor ~/.claude/plugins/rock-agent-harbor
 ```
 
 ## 开发插件
@@ -54,7 +53,7 @@ ln -s ~/Code/rock-agents/plugins/harbor-tools ~/.claude/plugins/harbor-tools
 | 插件 | 描述 | 技能数 |
 |------|------|--------|
 | `rock-agent-sdk` | ROCK Agent SDK 开发指南 | 1 |
-| `harbor-tools` | Harbor Benchmark 运行分析与调试 | 2 |
+| `rock-agent-harbor` | Harbor Benchmark 运行分析与调试 | 1 |
 
 ### 插件详情
 
@@ -63,8 +62,7 @@ ln -s ~/Code/rock-agents/plugins/harbor-tools ~/.claude/plugins/harbor-tools
 |------|------|
 | `rock-agent-sdk` | 辅助开发者基于 ROCK Agent SDK 开发 Agent Benchmark 评测 |
 
-**harbor-tools**
+**rock-agent-harbor**
 | 技能 | 说明 |
 |------|------|
-| `harbor-sandbox-status` | 查询 ROCK 沙箱中 Harbor 任务执行状态 |
-| `harbor-debug` | Harbor Benchmark 运行问题排查和诊断 |
+| `rock-agent-harbor-sandbox-debug` | 查询和排查 ROCK 沙箱中 Harbor 任务状态与问题 |
