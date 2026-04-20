@@ -7,10 +7,10 @@
   },
   "plugins": [
     {
-      "name": "rock-agent-harbor",
+      "name": "rock-agent",
       "description": "Harbor Benchmark 运行分析与调试工具集，支持沙箱状态查询、Trial 日志分析、Reward 查看等",
       "category": "development",
-      "source": "./plugins/rock-agent-harbor"
+      "source": "./plugins/rock-agent"
     },
     {
       "name": "rock-agent-sdk",

@@ -13,7 +13,7 @@ rock-agents/
 │   │   ├── plugin.json
 │   │   ├── hooks/
 │   │   └── skills/rock-agent-sdk/
-│   └── rock-agent-harbor/          # Harbor Benchmark 分析与调试
+│   └── rock-agent/                 # Harbor / Bash Job 排查
 │       ├── plugin.json
 │       ├── hooks/
 │       └── skills/
@@ -30,13 +30,13 @@ rock-agents/
 
 ```
 /plugin marketplace add xdlkc/rock-agents
-/plugin install rock-agent-harbor@rock-agents
+/plugin install rock-agent@rock-agents
 ```
 
 或手动安装（将插件目录软链到 `~/.claude/plugins/`）：
 
 ```bash
-ln -s ~/Code/rock-agents/plugins/rock-agent-harbor ~/.claude/plugins/rock-agent-harbor
+ln -s ~/Code/rock-agents/plugins/rock-agent ~/.claude/plugins/rock-agent
 ```
 
 ## 开发插件
@@ -53,7 +53,7 @@ ln -s ~/Code/rock-agents/plugins/rock-agent-harbor ~/.claude/plugins/rock-agent-
 | 插件 | 描述 | 技能数 |
 |------|------|--------|
 | `rock-agent-sdk` | ROCK Agent SDK 开发指南 | 1 |
-| `rock-agent-harbor` | Harbor Benchmark 运行分析与调试 | 2 |
+| `rock-agent` | Harbor / Bash Job 运行分析与调试 | 1 |
 
 ### 插件详情
 
@@ -62,7 +62,7 @@ ln -s ~/Code/rock-agents/plugins/rock-agent-harbor ~/.claude/plugins/rock-agent-
 |------|------|
 | `rock-agent-sdk` | 辅助开发者基于 ROCK Agent SDK 开发 Agent Benchmark 评测 |
 
-**rock-agent-harbor**
+**rock-agent**
 | 技能 | 说明 |
 |------|------|
 | `rock-agent-debug` | 查询和排查 ROCK 沙箱中 Harbor Job 和 Bash Job 的状态与问题 |

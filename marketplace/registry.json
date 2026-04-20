@@ -1,14 +1,14 @@
 {
   "registry": "xdlkc/rock-agents",
-  "updated_at": "2026-04-13",
+  "updated_at": "2026-04-20",
   "plugins": [
     {
-      "name": "rock-agent-harbor",
-      "version": "1.2.0",
-      "description": "Harbor Benchmark 运行分析与调试工具集，支持沙箱状态查询、Trial 日志分析、Reward 查看等",
-      "path": "plugins/rock-agent-harbor",
+      "name": "rock-agent",
+      "version": "1.3.0",
+      "description": "ROCK 沙箱 Agent Job 排查工具集，支持 Harbor Job 和 Bash Job 的状态查询、日志分析、Reward 查看等",
+      "path": "plugins/rock-agent",
       "skills": [
-        "rock-agent-harbor-sandbox-debug"
+        "rock-agent-debug"
       ]
     },
     {
