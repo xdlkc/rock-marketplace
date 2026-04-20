@@ -1,41 +1,48 @@
 ---
-name: rock-agent-harbor-sandbox-debug
-description: 分析和排查运行在 ROCK 沙箱（sandbox）中的 Harbor 任务。当用户提供沙箱 ID 并询问 harbor 任务状态、进度、日志、reward、agent 执行情况，或遇到 job 失败、trial 异常、reward 为 0、agent 崩溃、verifier 错误等问题时使用。触发词：沙箱里跑的 harbor、查一下 sandbox 里的 harbor job、看看 trial 状态、bench 跑到哪了、查 reward、看 agent 日志、harbor run 失败、bench 跑不通、agent 没有得分、trial exception、verifier 报错、container 挂了、reward.txt 为空、debug harbor、排查 bench。
+name: rock-agent-debug
+description: 排查运行在 ROCK 沙箱（sandbox）中的 Agent Job。支持 Harbor Job 和 Bash Job 两种类型。当用户提供沙箱 ID 并询问 job 状态、进度、日志、reward、agent 执行情况，或遇到 job 失败、trial 异常、reward 为 0、agent 崩溃等问题时使用。触发词：沙箱里跑的 job、查 sandbox 状态、harbor run 失败、bash job 报错、bench 跑不通、查 reward、看 agent 日志、排查 bench。
 ---
 
-# Rock Agent Harbor Sandbox Debug Skill
+# Rock Agent Debug Skill
 
-通过 `rockcli` 查询和排查运行在 ROCK 沙箱中的 Harbor 任务，最终产出一份落盘的详细报告。
+通过 `rockcli` 查询和排查运行在 ROCK 沙箱中的 Agent Job（Harbor Job / Bash Job），最终产出一份落盘的详细报告。
 
 ## 背景
 
-Harbor 是运行在 ROCK 沙箱中的 Agent Benchmark 评测框架。用户通过 `rockcli` 管理沙箱，Harbor 在沙箱内逐 Trial 执行 Agent → Verifier 流程，产物落盘到 `/data/logs/user-defined/`（平台启动）或 `/tmp/harbor/jobs/`（本地 `harbor run`）。
+ROCK 沙箱支持两种 Job 类型：
+
+| 类型 | Config 类 | Trial 类 | 识别特征 |
+|------|-----------|----------|---------|
+| **Harbor Job** | `HarborJobConfig` | `HarborTrial` | 有 `orchestrator`、`datasets`、`agents`、`jobs_dir`、`experiment_id` 字段 |
+| **Bash Job** | `BashJobConfig` | `BashTrial` | 有 `script` 或 `script_path` 字段，无 harbor 相关字段 |
+
+Job 类型通过 YAML 配置自动检测：先尝试 `HarborJobConfig` 解析，失败则回退到 `BashJobConfig`。
 
 ## 重要原则
 
 **拿到足够信息就停止查询。** 不要陷入"文件不在预期位置就全盘搜索"的循环。判断标准：
-- ROCK 平台任务（`/data/logs/user-defined/`）：`.out` 文件包含完整运行日志，能看到 reward 就够了
-- harbor run 任务（`/tmp/harbor/jobs/`）：`result.json` + `trial.log` + `exception.txt` 就够了
-- 如果 `result.json` 不存在但 `.out` 或 `job.log` 能说明情况，**不必继续找**，直接用现有信息出报告
+- Harbor Job（`/data/logs/user-defined/`）：`.out` 文件包含完整运行日志，能看到 reward 就够了
+- Harbor Job（`/tmp/harbor/jobs/`）：`result.json` + `trial.log` + `exception.txt` 就够了
+- Bash Job：`.out` 日志 + 脚本退出码 + artifact（如有）就够了
+- 如果关键文件能说明情况，**不必继续找**，直接用现有信息出报告
 
 ---
 
-## Step 1：确认沙箱 ID 和 jobs 目录
+## Step 1：确认沙箱 ID 和 Job 类型
 
 ```bash
 # 查看沙箱存活状态
 rockcli sandbox <id> status
 
-# 同时检查两个路径
-rockcli sandbox <id> exec 'echo "=== /tmp/harbor/jobs/ ==="; ls -lt /tmp/harbor/jobs/ 2>/dev/null | head -10; echo "=== /data/logs/user-defined/ ==="; ls -lt /data/logs/user-defined/ 2>/dev/null | head -10'
+# 同时检查所有可能的路径
+rockcli sandbox <id> exec 'echo "=== /tmp/harbor/jobs/ ==="; ls -lt /tmp/harbor/jobs/ 2>/dev/null | head -10; echo "=== /data/logs/user-defined/ ==="; ls -lt /data/logs/user-defined/ 2>/dev/null | head -10; echo "=== /data/logs/ ==="; ls -lt /data/logs/*.out /data/logs/*.log 2>/dev/null | head -10'
 ```
 
-**两类启动方式对应不同路径：**
-
-| 启动方式 | jobs 目录 | 配置文件 | 运行日志 |
-|---------|----------|---------|---------|
-| `harbor run` 直接运行 | `/tmp/harbor/jobs/` | `config.json` | `job.log` |
-| `rockcli agent run`（ROCK 平台） | `/data/logs/user-defined/jobs/` | `<job_name>.yaml` | `<job_name>.out`（完整） |
+**判断 Job 类型：**
+1. 读取 YAML 配置（优先）：`rockcli sandbox <id> exec 'cat /data/logs/user-defined/<job_name>.yaml'`
+2. 如果配置包含 `orchestrator`、`datasets`、`agents` → **Harbor Job**
+3. 如果配置包含 `script` 或 `script_path` → **Bash Job**
+4. 如果没有 YAML，只有 `/tmp/harbor/jobs/` 下的文件 → **Harbor Job**（本地 harbor run）
 
 如果用户没给沙箱 ID，直接问。
 
@@ -46,20 +53,20 @@ rockcli sandbox <id> exec 'echo "=== /tmp/harbor/jobs/ ==="; ls -lt /tmp/harbor/
 用户没有指定 job 时，取最新有内容的一个（空目录跳过）。
 
 ```bash
-# harbor run 路径：找最新非空的 job
+# Harbor 路径（本地 harbor run）：找最新非空的 job
 rockcli sandbox <id> exec 'for d in $(ls -t /tmp/harbor/jobs/); do if [ "$(ls /tmp/harbor/jobs/$d 2>/dev/null)" ]; then echo $d; break; fi; done'
 
-# ROCK 平台路径：列出 .yaml 文件
-rockcli sandbox <id> exec 'ls -lt /data/logs/user-defined/*.yaml 2>/dev/null | head -5'
+# ROCK 平台路径：列出 .yaml 配置和 .out 日志
+rockcli sandbox <id> exec 'ls -lt /data/logs/user-defined/*.yaml /data/logs/user-defined/*.out 2>/dev/null | head -10'
 ```
 
 ---
 
 ## Step 3：读取 Job 信息
 
-根据路径类型选择对应命令：
+### Harbor Job
 
-### /tmp/harbor/jobs/ 路径
+#### /tmp/harbor/jobs/ 路径（本地 harbor run）
 
 ```bash
 rockcli sandbox <id> exec 'cat /tmp/harbor/jobs/<job_name>/config.json'
@@ -67,7 +74,7 @@ rockcli sandbox <id> exec 'cat /tmp/harbor/jobs/<job_name>/result.json 2>/dev/nu
 rockcli sandbox <id> exec 'cat /tmp/harbor/jobs/<job_name>/job.log 2>/dev/null'
 ```
 
-### /data/logs/user-defined/ 路径（ROCK 平台）
+#### /data/logs/user-defined/ 路径（ROCK 平台）
 
 ```bash
 # 配置（agent、model、dataset）
@@ -82,9 +89,30 @@ rockcli sandbox <id> exec 'cat /data/logs/user-defined/jobs/<job_name>/result.js
 
 **`.out` 文件足以判断任务是否完成**（含 reward 行、完成时间、trial 名），不要因为 `result.json` 不存在就全盘搜索。
 
+### Bash Job
+
+```bash
+# 配置（script / script_path）
+rockcli sandbox <id> exec 'cat /data/logs/user-defined/<job_name>.yaml'
+
+# 完整运行日志
+rockcli sandbox <id> exec 'cat /data/logs/user-defined/<job_name>.out'
+
+# 检查是否有 artifact 输出
+rockcli sandbox <id> exec 'ls -lt /data/logs/artifacts/ 2>/dev/null | head -10'
+```
+
+Bash Job 的特点：
+- 单次脚本执行，没有 trial 概念
+- 退出码 (exit code) 是判断成功/失败的关键
+- 可能有 OSS artifact 输出到 `artifacts/{namespace}/{experiment_id}/{job_name}/`
+- 日志直接输出到 `.out` 文件
+
 ---
 
-## Step 4：逐 Trial 分析
+## Step 4：分析结果
+
+### Harbor Job：逐 Trial 分析
 
 **Trial 文件结构（/tmp/harbor/jobs/ 路径）：**
 ```
@@ -126,13 +154,28 @@ rockcli sandbox <id> exec 'for t in /tmp/harbor/jobs/<job_name>/*/; do echo "===
 - `verifier` 有值，`finished_at` 为 null → Verifier 运行中
 - `finished_at` 有值 → 已完成
 
+### Bash Job：单次执行分析
+
+Bash Job 没有 trial 概念，是一次性的脚本执行：
+
+```bash
+# 查看退出码（.out 末尾通常有 exit code）
+rockcli sandbox <id> exec 'tail -20 /data/logs/user-defined/<job_name>.out'
+
+# 搜索错误
+rockcli sandbox <id> exec 'grep -i "error\|exception\|failed\|traceback" /data/logs/user-defined/<job_name>.out | tail -30'
+
+# 如果有 artifact，检查输出
+rockcli sandbox <id> exec 'ls -R /data/logs/artifacts/<namespace>/<experiment_id>/<job_name>/ 2>/dev/null'
+```
+
 ---
 
 ## Step 5：深入调试（发现问题时）
 
-当发现异常、reward 为 0 或任务失败时，进一步排查：
+### Harbor Job 调试
 
-### 读取详细日志
+#### 读取详细日志
 
 ```bash
 # 1. 如果有 exception.txt，先读它
@@ -146,7 +189,7 @@ rockcli sandbox <id> exec 'cat /tmp/harbor/jobs/<job_name>/<trial_name>/verifier
 rockcli sandbox <id> exec 'grep -i "error\|exception\|failed\|traceback" /tmp/harbor/jobs/<job_name>/<trial_name>/trial.log | tail -50'
 ```
 
-### 检查 Docker Container 状态
+#### 检查 Docker Container 状态
 
 Harbor Docker container 命名规则：`hb__<environment_name>`（小写）
 
@@ -168,7 +211,7 @@ print(f\"OOMKilled: {state[chr(39)]OOMKilled{chr(39)}}\")
 rockcli sandbox <id> exec 'docker logs <container_name> --tail 100'
 ```
 
-### 查看 Agent 执行轨迹（按需）
+#### 查看 Agent 执行轨迹（按需）
 
 用户想了解 agent 做了什么时才查。
 
@@ -185,21 +228,35 @@ for i, s in enumerate(steps[:20]):
 "'
 ```
 
+### Bash Job 调试
+
+```bash
+# 1. 查看完整日志
+rockcli sandbox <id> exec 'cat /data/logs/user-defined/<job_name>.out'
+
+# 2. 检查沙箱内执行环境
+rockcli sandbox <id> exec 'echo "=== Python ==="; python3 --version 2>/dev/null; echo "=== Node ==="; node --version 2>/dev/null; echo "=== Disk ==="; df -h / 2>/dev/null'
+
+# 3. 如果有 artifact，查看内容
+rockcli sandbox <id> exec 'cat /data/logs/artifacts/<namespace>/<experiment_id>/<job_name>/* 2>/dev/null | head -100'
+```
+
 ---
 
 ## Step 6：生成报告（必须输出并保存到本地文件）
 
 **每次分析结束必须：**
 1. 在对话中输出结构化报告
-2. 将报告保存到本地文件：`/tmp/harbor-report-<sandbox_id_短>-<timestamp>.md`
+2. 将报告保存到本地文件：`/tmp/rock-agent-report-<sandbox_id_短>-<timestamp>.md`
 
-报告格式：
+### Harbor Job 报告格式
 
 ```markdown
-## Harbor 任务报告
+## Harbor Job 报告
 
 **沙箱**: <sandbox_id>
 **Job**: <job_name>
+**类型**: Harbor Job
 **时间**: <started_at> → <finished_at 或 "运行中">
 **耗时**: <duration>
 
@@ -232,25 +289,52 @@ for i, s in enumerate(steps[:20]):
 - 证据：`exception.txt` 关键日志
 - 建议：...
 
-**环境问题**（Docker/依赖/网络）
-- ...
-
-**Agent 问题**（配置/模型/token 超限）
-- ...
-
-**Verifier 问题**（测试脚本/奖励计算）
-- ...
-
 ### 行动建议
 1. **立即修复**：...
 2. **下次运行前**：...
 ```
 
-**状态图标：** ✅ 通过（reward>0）| ❌ 失败 | 🔄 运行中 | ⚠️ 完成但异常
+### Bash Job 报告格式
+
+```markdown
+## Bash Job 报告
+
+**沙箱**: <sandbox_id>
+**Job**: <job_name>
+**类型**: Bash Job
+**时间**: <started_at> → <finished_at>
+**耗时**: <duration>
+**退出码**: <exit_code>
+
+### 配置
+- Script: <script 内容或 script_path>
+- Environment: <environment 配置>
+- Timeout: <timeout>
+
+### 执行结果
+- 状态: ✅ 成功 / ❌ 失败
+- 退出码: <0 或非零>
+- 关键输出: <摘要>
+
+### 日志摘要
+<关键日志片段，特别是错误信息>
+
+### 问题分析（如有）
+- 根本原因：...
+- 证据：日志关键行
+- 建议：...
+
+### 行动建议
+1. ...
+```
+
+**状态图标：** ✅ 通过 | ❌ 失败 | 🔄 运行中 | ⚠️ 完成但异常
 
 ---
 
 ## 常见故障速查
+
+### Harbor Job
 
 | 现象 | 失败阶段 | 典型原因 |
 |------|---------|---------|
@@ -263,6 +347,15 @@ for i, s in enumerate(steps[:20]):
 | reward.txt 为空或不存在 | verifier | verifier 未运行到写 reward 步骤 |
 | agent_result 为 null，execution 时间极短 | agent_setup | agent 安装脚本报错 |
 | 所有 trial 失败，同样的 exception | 环境层面 | 镜像/依赖/网络问题 |
+
+### Bash Job
+
+| 现象 | 典型原因 |
+|------|---------|
+| 退出码非零 | 脚本执行失败 |
+| 超时退出 | `timeout` 设置过短或脚本挂起 |
+| 日志截断 | 沙箱资源不足 (OOM / 磁盘满) |
+| 无 artifact 输出 | 脚本未写入预期路径或路径权限问题 |
 
 ## Agent 类型参考
 
@@ -278,7 +371,7 @@ for i, s in enumerate(steps[:20]):
 | `oracle` | 参考 agent（已知解） |
 | `nop` | 空操作（测试用） |
 
-## 批量扫描脚本
+## Harbor Job 批量扫描脚本
 
 ```python
 #!/usr/bin/env python3
