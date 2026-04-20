@@ -17,7 +17,7 @@ rock-agents/
 │       ├── plugin.json
 │       ├── hooks/
 │       └── skills/
-│           └── rock-agent-harbor-sandbox-debug/
+│           └── rock-agent-debug/
 ├── marketplace/                    # Marketplace 索引
 │   └── registry.json
 └── docs/
@@ -53,7 +53,7 @@ ln -s ~/Code/rock-agents/plugins/rock-agent-harbor ~/.claude/plugins/rock-agent-
 | 插件 | 描述 | 技能数 |
 |------|------|--------|
 | `rock-agent-sdk` | ROCK Agent SDK 开发指南 | 1 |
-| `rock-agent-harbor` | Harbor Benchmark 运行分析与调试 | 1 |
+| `rock-agent-harbor` | Harbor Benchmark 运行分析与调试 | 2 |
 
 ### 插件详情
 
@@ -65,4 +65,4 @@ ln -s ~/Code/rock-agents/plugins/rock-agent-harbor ~/.claude/plugins/rock-agent-
 **rock-agent-harbor**
 | 技能 | 说明 |
 |------|------|
-| `rock-agent-harbor-sandbox-debug` | 查询和排查 ROCK 沙箱中 Harbor 任务状态与问题 |
+| `rock-agent-debug` | 查询和排查 ROCK 沙箱中 Harbor Job 和 Bash Job 的状态与问题 |
