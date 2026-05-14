@@ -94,6 +94,20 @@ rockcli sandbox <id> log search --log-file access.log -f "status>=400"
 rockcli sandbox <id> exec 'curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health'
 ```
 
+### 查询历史与回放
+
+存活状态的沙箱也可以查看操作历史和回放，用于追溯问题发生过程：
+
+```bash
+rockcli sandbox <id> history                    # 查看完整操作历史
+rockcli sandbox <id> replay                     # 回放请求序列到新沙箱
+```
+
+适用场景：
+- 回溯操作顺序，定位哪一步导致了当前异常
+- 回放到新沙箱做对比，排除环境污染因素
+- 导出操作序列供他人复现
+
 ---
 
 ## Step 2B：沙箱已停止（stopped）— 只能查历史
