@@ -1,9 +1,0 @@
-{
-  "name": "rock-cli",
-  "version": "1.0.0",
-  "description": "ROCK CLI 使用指南，涵盖沙箱管理、日志查看、Agent 评估等",
-  "author": {
-    "name": "xdlkc"
-  },
-  "homepage": "https://github.com/xdlkc/rock-skills"
-}

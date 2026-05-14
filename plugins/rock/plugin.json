@@ -1,0 +1,9 @@
+{
+  "name": "rock",
+  "version": "1.0.0",
+  "description": "ROCK 平台开发技能集，包含 CLI 使用指南、沙箱排查工具和 Agent Job 调试工具",
+  "author": {
+    "name": "xdlkc"
+  },
+  "homepage": "https://github.com/xdlkc/rock-skills"
+}
