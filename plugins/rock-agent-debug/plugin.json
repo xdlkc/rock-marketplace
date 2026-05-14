@@ -1,5 +1,5 @@
 {
-  "name": "rock-agent",
+  "name": "rock-agent-debug",
   "version": "1.3.0",
   "description": "ROCK 沙箱 Agent Job 排查工具集，支持 Harbor Job 和 Bash Job 的状态查询、日志分析、Reward 查看等",
   "author": {

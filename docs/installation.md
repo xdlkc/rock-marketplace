@@ -21,8 +21,9 @@ npx skills add xdlkc/rock-agents -a opencode       # OpenCode
 npx skills add xdlkc/rock-agents -a codex          # OpenAI Codex
 
 # 安装指定技能
+npx skills add xdlkc/rock-agents --skill rock-cli
+npx skills add xdlkc/rock-agents --skill rock-debug
 npx skills add xdlkc/rock-agents --skill rock-agent-debug
-npx skills add xdlkc/rock-agents --skill rock-agent-sdk
 
 # 非交互式安装（适合脚本/CI）
 npx skills add xdlkc/rock-agents --all -y
@@ -66,19 +67,21 @@ git clone git@github.com:xdlkc/rock-agents.git ~/Code/rock-agents
 
 ```bash
 # Claude Code
+cp -r ~/Code/rock-agents/skills/rock-cli ~/.claude/skills/
+cp -r ~/Code/rock-agents/skills/rock-debug ~/.claude/skills/
 cp -r ~/Code/rock-agents/skills/rock-agent-debug ~/.claude/skills/
-cp -r ~/Code/rock-agents/skills/rock-agent-sdk ~/.claude/skills/
 
 # Cursor
-cp -r ~/Code/rock-agents/skills/rock-agent-debug ~/.cursor/skills/
+cp -r ~/Code/rock-agents/skills/rock-cli ~/.cursor/skills/
 ```
 
 ## 可用技能
 
 | 技能 | 说明 |
 |------|------|
+| `rock-cli` | ROCK CLI 使用指南，涵盖沙箱管理、文件传输、交互式开发、Agent 评估等 |
+| `rock-debug` | 沙箱排查工具，通过日志搜索、实时追踪、日志下载等方式定位沙箱问题 |
 | `rock-agent-debug` | 排查 ROCK 沙箱中 Harbor Job 和 Bash Job 的状态与问题 |
-| `rock-agent-sdk` | ROCK Agent SDK 开发指南 |
 
 ## 验证安装
 
@@ -92,8 +95,9 @@ cp -r ~/Code/rock-agents/skills/rock-agent-debug ~/.cursor/skills/
 
 ```bash
 # 使用 CLI 更新
+npx skills update rock-cli
+npx skills update rock-debug
 npx skills update rock-agent-debug
-npx skills update rock-agent-sdk
 
 # 或重新添加
 npx skills add xdlkc/rock-agents --all -y
@@ -102,13 +106,15 @@ npx skills add xdlkc/rock-agents --all -y
 ## 卸载
 
 ```bash
+npx skills remove rock-cli
+npx skills remove rock-debug
 npx skills remove rock-agent-debug
-npx skills remove rock-agent-sdk
 ```
 
 或手动删除技能目录：
 
 ```bash
+rm -rf ~/.claude/skills/rock-cli
+rm -rf ~/.claude/skills/rock-debug
 rm -rf ~/.claude/skills/rock-agent-debug
-rm -rf ~/.claude/skills/rock-agent-sdk
 ```

@@ -1,0 +1,9 @@
+{
+  "name": "rock-debug",
+  "version": "1.0.0",
+  "description": "ROCK 沙箱排查工具，通过日志搜索、实时追踪、日志下载等方式定位沙箱问题",
+  "author": {
+    "name": "xdlkc"
+  },
+  "homepage": "https://github.com/xdlkc/rock-agents"
+}

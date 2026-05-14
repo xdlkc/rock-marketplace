@@ -1,9 +1,0 @@
-{
-  "name": "rock-agent-sdk",
-  "version": "1.0.0",
-  "description": "ROCK Agent SDK 开发指南，辅助开发者编写 Agent 配置、创建 Benchmark 评测 Job、运行并分析结果",
-  "author": {
-    "name": "xdlkc"
-  },
-  "homepage": "https://github.com/xdlkc/rock-agents"
-}

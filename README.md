@@ -8,21 +8,25 @@ ROCK 平台 AI Agent 技能插件库，为 Claude Code 等 AI 工具提供针对
 
 ```
 rock-agents/
-├── skills/                         # Skills 目录（兼容 npx skills add）
-│   ├── rock-agent-debug ->         # 软链到 plugins
-│   └── rock-agent-sdk ->           # 软链到 plugins
-├── plugins/                        # Claude Code Plugin 目录
-│   ├── rock-agent/                 # Harbor / Bash Job 排查
+├── skills/                             # Skills 目录（兼容 npx skills add）
+│   ├── rock-cli ->                     # 软链到 plugins
+│   ├── rock-debug ->                   # 软链到 plugins
+│   └── rock-agent-debug ->             # 软链到 plugins
+├── plugins/                            # Claude Code Plugin 目录
+│   ├── rock-cli/                       # ROCK CLI 使用指南
 │   │   ├── plugin.json
-│   │   └── skills/rock-agent-debug/
-│   └── rock-agent-sdk/             # Agent SDK 开发指南
+│   │   └── skills/rock-cli/
+│   ├── rock-debug/                     # 沙箱排查工具
+│   │   ├── plugin.json
+│   │   └── skills/rock-debug/
+│   └── rock-agent-debug/               # Agent Job 排查
 │       ├── plugin.json
-│       └── skills/rock-agent-sdk/
-├── marketplace/                    # Marketplace 索引
-│   └── marketplace.json
+│       └── skills/rock-agent-debug/
+├── marketplace/                        # Marketplace 索引
+│   └── registry.json
 └── docs/
-    ├── installation.md             # 安装指南
-    └── plugin-spec.md              # 插件规范
+    ├── installation.md                 # 安装指南
+    └── plugin-spec.md                  # 插件规范
 ```
 
 ## 安装技能
@@ -39,7 +43,7 @@ npx skills add xdlkc/rock-agents --all
 
 ```
 /plugin marketplace add xdlkc/rock-agents
-/plugin install rock-agent@rock-agents
+/plugin install rock-cli@rock
 ```
 
 ## 开发插件
@@ -55,17 +59,23 @@ npx skills add xdlkc/rock-agents --all
 
 | 插件 | 描述 | 技能数 |
 |------|------|--------|
-| `rock-agent-sdk` | ROCK Agent SDK 开发指南 | 1 |
-| `rock-agent` | Harbor / Bash Job 运行分析与调试 | 1 |
+| `rock-cli` | ROCK CLI 使用指南 | 1 |
+| `rock-debug` | 沙箱排查工具 | 1 |
+| `rock-agent-debug` | Agent Job 排查 | 1 |
 
 ### 插件详情
 
-**rock-agent-sdk**
+**rock-cli**
 | 技能 | 说明 |
 |------|------|
-| `rock-agent-sdk` | 辅助开发者基于 ROCK Agent SDK 开发 Agent Benchmark 评测 |
+| `rock-cli` | ROCK CLI 使用指南，涵盖沙箱管理、文件传输、交互式开发、Agent 评估等 |
 
-**rock-agent**
+**rock-debug**
+| 技能 | 说明 |
+|------|------|
+| `rock-debug` | 通过日志搜索、实时追踪、日志下载等方式定位沙箱问题 |
+
+**rock-agent-debug**
 | 技能 | 说明 |
 |------|------|
 | `rock-agent-debug` | 查询和排查 ROCK 沙箱中 Harbor Job 和 Bash Job 的状态与问题 |

@@ -1,22 +1,28 @@
 {
-  "name": "rock-agents",
-  "description": "ROCK 平台 AI Agent 开发插件集，包含 Harbor Benchmark 工具和 Rock Agent SDK 开发指南",
+  "name": "rock",
+  "description": "ROCK 平台开发插件集，包含 CLI 使用指南、沙箱排查工具和 Agent Job 调试工具",
   "owner": {
     "name": "xdlkc",
     "email": ""
   },
   "plugins": [
     {
-      "name": "rock-agent",
-      "description": "Harbor Benchmark 运行分析与调试工具集，支持沙箱状态查询、Trial 日志分析、Reward 查看等",
+      "name": "rock-cli",
+      "description": "ROCK CLI 使用指南，涵盖沙箱管理、文件传输、交互式开发、Agent 评估等",
       "category": "development",
-      "source": "./plugins/rock-agent"
+      "source": "./plugins/rock-cli"
     },
     {
-      "name": "rock-agent-sdk",
-      "description": "ROCK Agent SDK 开发指南，辅助开发者编写 Agent 配置、创建 Benchmark 评测 Job、运行并分析结果",
+      "name": "rock-debug",
+      "description": "ROCK 沙箱排查工具，通过日志搜索、实时追踪、日志下载等方式定位沙箱问题",
       "category": "development",
-      "source": "./plugins/rock-agent-sdk"
+      "source": "./plugins/rock-debug"
+    },
+    {
+      "name": "rock-agent-debug",
+      "description": "ROCK 沙箱 Agent Job 排查工具集，支持 Harbor Job 和 Bash Job 的状态查询、日志分析、Reward 查看等",
+      "category": "development",
+      "source": "./plugins/rock-agent-debug"
     }
   ]
 }
