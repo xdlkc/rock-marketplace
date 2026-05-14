@@ -1,14 +1,14 @@
 # 安装 Rock Skills
 
-Rock Skills 提供适用于多种 AI Agent 工具的技能（Skills），支持 Claude Code、Cursor、Copilot、Codex、OpenCode、Windsurf 等平台。
+Rock Marketplace 提供适用于多种 AI Agent 工具的技能（Skills），支持 Claude Code、Cursor、Copilot、Codex、OpenCode、Windsurf 等平台。
 
 ## 方式一：Claude Code Plugin Marketplace（推荐）
 
 一次安装全部技能：
 
 ```
-/plugin marketplace add xdlkc/rock-skills
-/plugin install rock@rock
+/plugin marketplace add xdlkc/rock-marketplace
+/plugin install rock@rock-marketplace
 ```
 
 ## 方式二：Skills CLI 安装
@@ -17,20 +17,20 @@ Rock Skills 提供适用于多种 AI Agent 工具的技能（Skills），支持 
 
 ```bash
 # 列出可用技能
-npx skills add xdlkc/rock-skills --list
+npx skills add xdlkc/rock-marketplace --list
 
 # 全局安装所有技能到所有支持的 Agent（推荐）
-npx skills add xdlkc/rock-skills --all -g
+npx skills add xdlkc/rock-marketplace --all -g
 
 # 安装到指定 Agent
-npx skills add xdlkc/rock-skills -a claude-code -g
-npx skills add xdlkc/rock-skills -a cursor -g
+npx skills add xdlkc/rock-marketplace -a claude-code -g
+npx skills add xdlkc/rock-marketplace -a cursor -g
 
 # 安装指定技能
-npx skills add xdlkc/rock-skills --skill rock-cli -g
+npx skills add xdlkc/rock-marketplace --skill rock-cli -g
 
 # 非交互式安装（适合脚本/CI）
-npx skills add xdlkc/rock-skills --all -g -y
+npx skills add xdlkc/rock-marketplace --all -g -y
 ```
 
 > **注意**：不加 `-g` 会安装到当前项目的 `.agents/skills/` 下，仅当前项目可用。加 `-g`（`--global`）才会安装到全局 `~/.agents/skills/`，所有项目都能使用。
@@ -54,16 +54,16 @@ npx skills add xdlkc/rock-skills --all -g -y
 ## 方式三：手动复制
 
 ```bash
-git clone git@github.com:xdlkc/rock-skills.git ~/Code/rock-skills
+git clone git@github.com:xdlkc/rock-marketplace.git ~/Code/rock-marketplace
 ```
 
 复制示例：
 
 ```bash
 # Claude Code
-cp -r ~/Code/rock-skills/skills/rock-cli ~/.claude/skills/
-cp -r ~/Code/rock-skills/skills/rock-debug ~/.claude/skills/
-cp -r ~/Code/rock-skills/skills/rock-agent-debug ~/.claude/skills/
+cp -r ~/Code/rock-marketplace/skills/rock-cli ~/.claude/skills/
+cp -r ~/Code/rock-marketplace/skills/rock-debug ~/.claude/skills/
+cp -r ~/Code/rock-marketplace/skills/rock-agent-debug ~/.claude/skills/
 ```
 
 ## 包含技能
@@ -83,8 +83,8 @@ cp -r ~/Code/rock-skills/skills/rock-agent-debug ~/.claude/skills/
 
 ```bash
 # Skills CLI
-npx skills add xdlkc/rock-skills --all -g -y
+npx skills add xdlkc/rock-marketplace --all -g -y
 
 # Plugin Marketplace（自动更新）
-/plugin update rock@rock
+/plugin update rock@rock-marketplace
 ```

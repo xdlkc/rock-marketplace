@@ -1,5 +1,5 @@
 {
-  "name": "rock",
+  "name": "rock-marketplace",
   "description": "ROCK 平台开发技能集，包含 CLI 使用指南、沙箱排查工具和 Agent Job 调试工具",
   "owner": {
     "name": "xdlkc",

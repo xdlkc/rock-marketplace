@@ -1,4 +1,4 @@
-# rock-skills
+# rock-marketplace
 
 ROCK 平台 AI Agent 技能插件库，为 Claude Code 等 AI 工具提供针对 ROCK 平台的专属技能。
 
@@ -7,7 +7,7 @@ ROCK 平台 AI Agent 技能插件库，为 Claude Code 等 AI 工具提供针对
 ## 结构
 
 ```
-rock-skills/
+rock-marketplace/
 ├── skills/                             # Skills 目录（兼容 npx skills add）
 │   ├── rock-cli ->                     # 软链到 plugins
 │   ├── rock-debug ->                   # 软链到 plugins
@@ -33,14 +33,14 @@ rock-skills/
 **快速安装（支持 Claude Code、Cursor、Windsurf、Codex、OpenCode 等）：**
 
 ```bash
-npx skills add xdlkc/rock-skills --all -g
+npx skills add xdlkc/rock-marketplace --all -g
 ```
 
 **Claude Code 用户可通过 Plugin Marketplace 安装（一次安装全部技能）：**
 
 ```
-/plugin marketplace add xdlkc/rock-skills
-/plugin install rock@rock
+/plugin marketplace add xdlkc/rock-marketplace
+/plugin install rock@rock-marketplace
 ```
 
 ## 包含技能
