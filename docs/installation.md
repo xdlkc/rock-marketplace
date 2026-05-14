@@ -10,24 +10,26 @@ Rock Agents 提供适用于多种 AI Agent 工具的技能（Skills），支持 
 # 列出可用技能
 npx skills add xdlkc/rock-skills --list
 
-# 安装所有技能到所有支持的 Agent
-npx skills add xdlkc/rock-skills --all
+# 全局安装所有技能到所有支持的 Agent（推荐）
+npx skills add xdlkc/rock-skills --all -g
 
 # 安装到指定 Agent
-npx skills add xdlkc/rock-skills -a claude-code    # Claude Code
-npx skills add xdlkc/rock-skills -a cursor         # Cursor
-npx skills add xdlkc/rock-skills -a windsurf       # Windsurf
-npx skills add xdlkc/rock-skills -a opencode       # OpenCode
-npx skills add xdlkc/rock-skills -a codex          # OpenAI Codex
+npx skills add xdlkc/rock-skills -a claude-code -g
+npx skills add xdlkc/rock-skills -a cursor -g
+npx skills add xdlkc/rock-skills -a windsurf -g
+npx skills add xdlkc/rock-skills -a opencode -g
+npx skills add xdlkc/rock-skills -a codex -g
 
 # 安装指定技能
-npx skills add xdlkc/rock-skills --skill rock-cli
-npx skills add xdlkc/rock-skills --skill rock-debug
-npx skills add xdlkc/rock-skills --skill rock-agent-debug
+npx skills add xdlkc/rock-skills --skill rock-cli -g
+npx skills add xdlkc/rock-skills --skill rock-debug -g
+npx skills add xdlkc/rock-skills --skill rock-agent-debug -g
 
 # 非交互式安装（适合脚本/CI）
-npx skills add xdlkc/rock-skills --all -y
+npx skills add xdlkc/rock-skills --all -g -y
 ```
+
+> **注意**：不加 `-g` 会安装到当前项目的 `.agents/skills/` 下，仅当前项目可用。加 `-g`（`--global`）才会安装到全局 `~/.agents/skills/`，所有项目都能使用。
 
 ### 支持的 Agent
 
@@ -100,7 +102,7 @@ npx skills update rock-debug
 npx skills update rock-agent-debug
 
 # 或重新添加
-npx skills add xdlkc/rock-skills --all -y
+npx skills add xdlkc/rock-skills --all -g -y
 ```
 
 ## 卸载

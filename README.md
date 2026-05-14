@@ -36,7 +36,7 @@ rock-skills/
 **快速安装（支持 Claude Code、Cursor、Windsurf、Codex、OpenCode 等）：**
 
 ```bash
-npx skills add xdlkc/rock-skills --all
+npx skills add xdlkc/rock-skills --all -g
 ```
 
 **Claude Code 用户可通过 Plugin Marketplace 安装：**
