@@ -8,25 +8,25 @@ Rock Agents 提供适用于多种 AI Agent 工具的技能（Skills），支持 
 
 ```bash
 # 列出可用技能
-npx skills add xdlkc/rock-agents --list
+npx skills add xdlkc/rock-skills --list
 
 # 安装所有技能到所有支持的 Agent
-npx skills add xdlkc/rock-agents --all
+npx skills add xdlkc/rock-skills --all
 
 # 安装到指定 Agent
-npx skills add xdlkc/rock-agents -a claude-code    # Claude Code
-npx skills add xdlkc/rock-agents -a cursor         # Cursor
-npx skills add xdlkc/rock-agents -a windsurf       # Windsurf
-npx skills add xdlkc/rock-agents -a opencode       # OpenCode
-npx skills add xdlkc/rock-agents -a codex          # OpenAI Codex
+npx skills add xdlkc/rock-skills -a claude-code    # Claude Code
+npx skills add xdlkc/rock-skills -a cursor         # Cursor
+npx skills add xdlkc/rock-skills -a windsurf       # Windsurf
+npx skills add xdlkc/rock-skills -a opencode       # OpenCode
+npx skills add xdlkc/rock-skills -a codex          # OpenAI Codex
 
 # 安装指定技能
-npx skills add xdlkc/rock-agents --skill rock-cli
-npx skills add xdlkc/rock-agents --skill rock-debug
-npx skills add xdlkc/rock-agents --skill rock-agent-debug
+npx skills add xdlkc/rock-skills --skill rock-cli
+npx skills add xdlkc/rock-skills --skill rock-debug
+npx skills add xdlkc/rock-skills --skill rock-agent-debug
 
 # 非交互式安装（适合脚本/CI）
-npx skills add xdlkc/rock-agents --all -y
+npx skills add xdlkc/rock-skills --all -y
 ```
 
 ### 支持的 Agent
@@ -50,7 +50,7 @@ npx skills add xdlkc/rock-agents --all -y
 克隆仓库后手动复制技能文件到对应工具的技能目录：
 
 ```bash
-git clone git@github.com:xdlkc/rock-agents.git ~/Code/rock-agents
+git clone git@github.com:xdlkc/rock-skills.git ~/Code/rock-skills
 ```
 
 ### 各工具技能目录
@@ -67,12 +67,12 @@ git clone git@github.com:xdlkc/rock-agents.git ~/Code/rock-agents
 
 ```bash
 # Claude Code
-cp -r ~/Code/rock-agents/skills/rock-cli ~/.claude/skills/
-cp -r ~/Code/rock-agents/skills/rock-debug ~/.claude/skills/
-cp -r ~/Code/rock-agents/skills/rock-agent-debug ~/.claude/skills/
+cp -r ~/Code/rock-skills/skills/rock-cli ~/.claude/skills/
+cp -r ~/Code/rock-skills/skills/rock-debug ~/.claude/skills/
+cp -r ~/Code/rock-skills/skills/rock-agent-debug ~/.claude/skills/
 
 # Cursor
-cp -r ~/Code/rock-agents/skills/rock-cli ~/.cursor/skills/
+cp -r ~/Code/rock-skills/skills/rock-cli ~/.cursor/skills/
 ```
 
 ## 可用技能
@@ -100,7 +100,7 @@ npx skills update rock-debug
 npx skills update rock-agent-debug
 
 # 或重新添加
-npx skills add xdlkc/rock-agents --all -y
+npx skills add xdlkc/rock-skills --all -y
 ```
 
 ## 卸载
