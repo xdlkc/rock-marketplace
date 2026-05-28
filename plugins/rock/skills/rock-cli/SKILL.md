@@ -1,6 +1,6 @@
 ---
 name: rock-cli
-description: ROCK CLI 使用指南。适用场景：安装/更新 rockcli、起沙箱/启动沙箱、停止沙箱、在沙箱里执行命令/exec、上传文件到沙箱、从沙箱下载文件、连接沙箱/attach/交互式 REPL、查看沙箱历史/history、回放请求/replay、查看状态/status、运行 AI Agent 评估任务。当用户提到 sandbox、rockcli、rc 命令、沙箱操作、agent 评估时使用。
+description: ROCK CLI 使用指南。适用场景：安装/更新 rockcli、起沙箱/启动沙箱、停止沙箱、在沙箱里执行命令/exec、上传文件到沙箱、从沙箱下载文件、连接沙箱/attach/交互式 REPL、查看沙箱历史/history、回放请求/replay、查看状态/status、运行 AI Agent 评估任务、查看 Agent Job/Task/Trial 信息（agent view）、Agent 文件操作（agent fs ls/cat/download/artifacts）、实验管理（experiment/expr 查看沙箱列表/批量停止）。当用户提到 sandbox、rockcli、rc 命令、沙箱操作、agent 评估、agent view、agent fs、experiment、expr、查看 job、查看 trial、查看轨迹 trajectory、批量停止沙箱时使用。
 ---
 
 # ROCK CLI 使用指南
@@ -97,20 +97,80 @@ rockcli sandbox <id> status
 
 ### 场景七：运行 AI Agent 评估任务
 
-适用：通过 Python rock-sdk 执行 AI agent 评估任务（需要 Python >= 3.10）
+适用：通过 Python rock-sdk 执行 AI agent 评估任务（需要 Python >= 3.11）
 
 ```bash
-# 从配置文件运行评估任务
-rockcli agent run -c job.yaml
+# Config 模式：从本地 YAML 文件运行
+rockcli agent run --config job.yaml
 
-# 运行指定的单个任务
-rockcli agent run -c job.yaml -t astropy__astropy-7606
+# 覆盖 YAML 中的任务
+rockcli agent run --config job.yaml --task astropy__astropy-7606
 
-# 使用预发环境运行评估任务
-rockcli agent run -c job.yaml --pre
+# Bench 模式：从 benchhub 模板运行
+rockcli agent run --bench aone-bench --task codereview-20789198 --agent claude-code
+
+# 异步模式（提交后立即返回 sandbox_id）
+rockcli agent run --config job.yaml --async
+
+# 使用预发环境
+rockcli agent run --config job.yaml --pre
 ```
 
-详细参数见 [references/agent.md](references/agent.md)。
+### 场景八：查看 Agent Job/Task/Trial 信息
+
+适用：查看实验列表、Job 状态、Task 进度、Trial 结果和执行轨迹
+
+```bash
+# 列举所有实验
+rockcli agent view -E
+
+# 列举指定实验的 Jobs
+rockcli agent view -e exp-id
+
+# 查看 Job 详情
+rockcli agent view -j my-job
+
+# 查看 Trial 完整执行轨迹
+rockcli agent view -j my-job --trajectory
+```
+
+### 场景九：Agent 文件操作（查看/下载 Job 产物）
+
+适用：查看 job/trial 的文件列表、读取日志和结果文件、下载产物、查看 artifacts
+
+```bash
+# 列出 job 根目录文件
+rockcli agent fs ls -e exp-id -j my-job
+
+# 读取 trial 的 result.json
+rockcli agent fs cat result.json -e exp-id -j my-job -t my-task
+
+# 下载 trajectory 到本地
+rockcli agent fs download trajectory.json -e exp-id -j my-job -t my-task -o /tmp/
+
+# 查看 trial artifacts 和 manifest
+rockcli agent fs artifacts -e exp-id -j my-job -t my-task
+```
+
+### 场景十：实验沙箱管理（批量查看/停止）
+
+适用：查看实验下的沙箱列表、批量停止实验的所有沙箱
+
+```bash
+# 查看实验沙箱概况
+rc expr aone-bench-test
+
+# 查询实验下沙箱列表
+rc expr aone-bench-test sandboxes
+
+# 预览批量停止影响范围
+rc expr aone-bench-test sandboxes stop --dry-run
+
+# 批量停止并跳过确认
+rc expr aone-bench-test sandboxes stop -y --concurrency 10
+```
+
+详细参数见 [references/agent.md](references/agent.md) 和 [references/experiment.md](references/experiment.md)。
 
 ---
 

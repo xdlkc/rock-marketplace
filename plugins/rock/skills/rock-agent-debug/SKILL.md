@@ -1,6 +1,6 @@
 ---
 name: rock-agent-debug
-description: 排查运行在 ROCK 沙箱（sandbox）中的 Agent Job。支持 Harbor Job 和 Bash Job 两种类型。当用户提供沙箱 ID 并询问 job 状态、进度、日志、reward、agent 执行情况，或遇到 job 失败、trial 异常、reward 为 0、agent 崩溃等问题时使用。触发词：沙箱里跑的 job、查 sandbox 状态、harbor run 失败、bash job 报错、bench 跑不通、查 reward、看 agent 日志、排查 bench。
+description: 排查运行在 ROCK 沙箱（sandbox）中的 Agent Job。支持 Harbor Job 和 Bash Job 两种类型。当用户提供沙箱 ID 或实验 ID 并询问 job 状态、进度、日志、reward、agent 执行情况，或遇到 job 失败、trial 异常、reward 为 0、agent 崩溃等问题时使用。触发词：沙箱里跑的 job、查 sandbox 状态、harbor run 失败、bash job 报错、bench 跑不通、查 reward、看 agent 日志、排查 bench、agent view、agent fs、查看 trial、查看轨迹。
 ---
 
 # Rock Agent Debug Skill
@@ -18,6 +18,37 @@ ROCK 沙箱支持两种 Job 类型：
 
 Job 类型通过 YAML 配置自动检测：先尝试 `HarborJobConfig` 解析，失败则回退到 `BashJobConfig`。
 
+## 两种排查路径
+
+根据信息来源不同，排查分为两种路径：
+
+| 路径 | 适用场景 | 核心命令 |
+|------|---------|---------|
+| **远程查询（推荐）** | 用户提供实验 ID 或 job 名称；沙箱已停止无法 exec | `rc agent view` + `rc agent fs` |
+| **沙箱内查询** | 用户提供沙箱 ID 且沙箱存活；需要更灵活的排查 | `rc sandbox <id> exec` |
+
+**优先使用远程查询**：`agent view` 和 `agent fs` 不依赖沙箱存活状态，能直接查看 job/trial 元数据和文件，效率更高。
+
+### 远程查询快速流程
+
+```bash
+# 1. 查看 job 状态和 trial 列表
+rockcli agent view -j <job_name>
+
+# 2. 列出 trial 文件
+rockcli agent fs ls -e <exp_id> -j <job_name> -t <task_name>
+
+# 3. 读取关键文件
+rockcli agent fs cat result.json -e <exp_id> -j <job_name> -t <task_name>
+rockcli agent fs cat agent/log.txt -e <exp_id> -j <job_name> -t <task_name>
+
+# 4. 查看执行轨迹
+rockcli agent view -j <job_name> --trajectory
+
+# 5. 查看 artifacts
+rockcli agent fs artifacts -e <exp_id> -j <job_name> -t <task_name>
+```
+
 ## 重要原则
 
 **拿到足够信息就停止查询。** 不要陷入"文件不在预期位置就全盘搜索"的循环。判断标准：
@@ -28,7 +59,24 @@ Job 类型通过 YAML 配置自动检测：先尝试 `HarborJobConfig` 解析，
 
 ---
 
-## Step 1：确认沙箱 ID 和 Job 类型
+## Step 1：确认排查入口和 Job 类型
+
+根据用户提供的信息选择排查路径：
+
+### 情况 A：用户提供实验 ID 或 Job 名称（远程查询）
+
+```bash
+# 列出实验下的 jobs
+rockcli agent view -e <experiment_id>
+
+# 查看 job 详情
+rockcli agent view -j <job_name>
+
+# 列出 job 文件（从文件结构判断类型）
+rockcli agent fs ls -e <experiment_id> -j <job_name>
+```
+
+### 情况 B：用户提供沙箱 ID（沙箱内查询）
 
 ```bash
 # 查看沙箱存活状态
@@ -44,7 +92,7 @@ rockcli sandbox <id> exec 'echo "=== /tmp/harbor/jobs/ ==="; ls -lt /tmp/harbor/
 3. 如果配置包含 `script` 或 `script_path` → **Bash Job**
 4. 如果没有 YAML，只有 `/tmp/harbor/jobs/` 下的文件 → **Harbor Job**（本地 harbor run）
 
-如果用户没给沙箱 ID，直接问。
+如果用户没给沙箱 ID 也没给实验 ID，直接问。
 
 ---
 
@@ -64,9 +112,35 @@ rockcli sandbox <id> exec 'ls -lt /data/logs/user-defined/*.yaml /data/logs/user
 
 ## Step 3：读取 Job 信息
 
-### Harbor Job
+### 远程查询方式（agent view / agent fs）
 
-#### /tmp/harbor/jobs/ 路径（本地 harbor run）
+适用于有实验 ID 或 job 名称的场景，**不依赖沙箱存活状态**：
+
+```bash
+# 查看 job 整体状态（含 tasks 列表、进度）
+rockcli agent view -j <job_name>
+
+# 列出 job 目录结构
+rockcli agent fs ls -e <exp_id> -j <job_name>
+
+# 读取 result.json
+rockcli agent fs cat result.json -e <exp_id> -j <job_name> -t <task_name>
+
+# 读取日志文件
+rockcli agent fs cat agent/log.txt -e <exp_id> -j <job_name> -t <task_name>
+
+# 查看完整执行轨迹
+rockcli agent view -j <job_name> --trajectory
+
+# 查看 trial artifacts
+rockcli agent fs artifacts -e <exp_id> -j <job_name> -t <task_name>
+```
+
+### 沙箱内查询方式
+
+#### Harbor Job
+
+##### /tmp/harbor/jobs/ 路径（本地 harbor run）
 
 ```bash
 rockcli sandbox <id> exec 'cat /tmp/harbor/jobs/<job_name>/config.json'
@@ -74,7 +148,7 @@ rockcli sandbox <id> exec 'cat /tmp/harbor/jobs/<job_name>/result.json 2>/dev/nu
 rockcli sandbox <id> exec 'cat /tmp/harbor/jobs/<job_name>/job.log 2>/dev/null'
 ```
 
-#### /data/logs/user-defined/ 路径（ROCK 平台）
+##### /data/logs/user-defined/ 路径（ROCK 平台）
 
 ```bash
 # 配置（agent、model、dataset）
@@ -89,7 +163,7 @@ rockcli sandbox <id> exec 'cat /data/logs/user-defined/jobs/<job_name>/result.js
 
 **`.out` 文件足以判断任务是否完成**（含 reward 行、完成时间、trial 名），不要因为 `result.json` 不存在就全盘搜索。
 
-### Bash Job
+#### Bash Job
 
 ```bash
 # 配置（script / script_path）
