@@ -24,7 +24,7 @@ Job 类型通过 YAML 配置自动检测：先尝试 `HarborJobConfig` 解析，
 
 | 路径 | 适用场景 | 核心命令 |
 |------|---------|---------|
-| **远程查询（推荐）** | 用户提供实验 ID 或 job 名称；沙箱已停止无法 exec | `rc agent view` + `rc agent fs` |
+| **远程查询（推荐）** | 用户提供实验 ID + Job ID（或仅 job 名）；沙箱已停止无法 exec | `rc agent view` + `rc agent fs` |
 | **沙箱内查询** | 用户提供沙箱 ID 且沙箱存活；需要更灵活的排查 | `rc sandbox <id> exec` |
 
 **优先使用远程查询**：`agent view` 和 `agent fs` 不依赖沙箱存活状态，能直接查看 job/trial 元数据和文件，效率更高。
@@ -33,7 +33,7 @@ Job 类型通过 YAML 配置自动检测：先尝试 `HarborJobConfig` 解析，
 
 ```bash
 # 1. 查看 job 状态和 trial 列表
-rockcli agent view -j <job_name>
+rockcli agent view -e <exp_id> -j <job_name>
 
 # 2. 列出 trial 文件
 rockcli agent fs ls -e <exp_id> -j <job_name> -t <task_name>
@@ -43,7 +43,7 @@ rockcli agent fs cat result.json -e <exp_id> -j <job_name> -t <task_name>
 rockcli agent fs cat agent/log.txt -e <exp_id> -j <job_name> -t <task_name>
 
 # 4. 查看执行轨迹
-rockcli agent view -j <job_name> --trajectory
+rockcli agent view -e <exp_id> -j <job_name> --trajectory
 
 # 5. 查看 artifacts
 rockcli agent fs artifacts -e <exp_id> -j <job_name> -t <task_name>
@@ -63,18 +63,22 @@ rockcli agent fs artifacts -e <exp_id> -j <job_name> -t <task_name>
 
 根据用户提供的信息选择排查路径：
 
-### 情况 A：用户提供实验 ID 或 Job 名称（远程查询）
+### 情况 A：用户提供实验 ID + Job ID（远程查询，推荐入口）
+
+最常见的入口是 `实验 ID + Job ID` 组合。`agent view` 和 `agent fs` 都要求 `-e <experiment_id>` 定位 job，两个参数配合逐级钻取：
 
 ```bash
-# 列出实验下的 jobs
+# 0. （可选）只有实验 ID、不知道 job 名时，先列出实验下的 jobs
 rockcli agent view -e <experiment_id>
 
-# 查看 job 详情
-rockcli agent view -j <job_name>
+# 1. 查看 job 详情（实验 ID + Job ID）
+rockcli agent view -e <experiment_id> -j <job_name>
 
-# 列出 job 文件（从文件结构判断类型）
+# 2. 列出 job 文件（从文件结构判断类型）
 rockcli agent fs ls -e <experiment_id> -j <job_name>
 ```
+
+只有 job 名、没有实验 ID 时，先用 `rockcli agent view -E` 列出所有实验，找到对应的 `experiment_id` 再继续。
 
 ### 情况 B：用户提供沙箱 ID（沙箱内查询）
 
@@ -114,11 +118,11 @@ rockcli sandbox <id> exec 'ls -lt /data/logs/user-defined/*.yaml /data/logs/user
 
 ### 远程查询方式（agent view / agent fs）
 
-适用于有实验 ID 或 job 名称的场景，**不依赖沙箱存活状态**：
+适用于有 `实验 ID + Job ID` 的场景，**不依赖沙箱存活状态**：
 
 ```bash
 # 查看 job 整体状态（含 tasks 列表、进度）
-rockcli agent view -j <job_name>
+rockcli agent view -e <exp_id> -j <job_name>
 
 # 列出 job 目录结构
 rockcli agent fs ls -e <exp_id> -j <job_name>
@@ -130,7 +134,7 @@ rockcli agent fs cat result.json -e <exp_id> -j <job_name> -t <task_name>
 rockcli agent fs cat agent/log.txt -e <exp_id> -j <job_name> -t <task_name>
 
 # 查看完整执行轨迹
-rockcli agent view -j <job_name> --trajectory
+rockcli agent view -e <exp_id> -j <job_name> --trajectory
 
 # 查看 trial artifacts
 rockcli agent fs artifacts -e <exp_id> -j <job_name> -t <task_name>
