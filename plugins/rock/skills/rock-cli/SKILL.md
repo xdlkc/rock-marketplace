@@ -1,6 +1,6 @@
 ---
 name: rock-cli
-description: ROCK CLI 使用指南。适用场景：安装/更新 rockcli、起沙箱/启动沙箱、停止沙箱、在沙箱里执行命令/exec、上传文件到沙箱、从沙箱下载文件、连接沙箱/attach/交互式 REPL、查看沙箱历史/history、回放请求/replay、查看状态/status、运行 AI Agent 评估任务、查看 Agent Job/Task/Trial 信息（agent view）、Agent 文件操作（agent fs ls/cat/download/artifacts）、实验管理（experiment/expr 查看沙箱列表/批量停止）。当用户提到 sandbox、rockcli、rc 命令、沙箱操作、agent 评估、agent view、agent fs、experiment、expr、查看 job、查看 trial、查看轨迹 trajectory、批量停止沙箱时使用。
+description: ROCK CLI 使用指南。适用场景：安装/更新 rockcli、起沙箱/启动沙箱、停止沙箱、在沙箱里执行命令/exec、上传文件到沙箱、从沙箱下载文件、连接沙箱/attach/交互式 REPL、查看沙箱历史/history、回放请求/replay、查看状态/status、运行 AI Agent 评估任务、查看 Agent Job/Task/Trial 信息（agent view）、Agent 文件操作（agent fs ls/cat/download/artifacts）、实验管理（experiment/expr 查看沙箱列表/批量停止）、镜像转储（image mirror/dump/task，仓库间镜像 Docker 镜像、通过沙箱传输镜像、管理转储任务）。当用户提到 sandbox、rockcli、rc 命令、沙箱操作、agent 评估、agent view、agent fs、experiment、expr、查看 job、查看 trial、查看轨迹 trajectory、批量停止沙箱、镜像转储、image mirror、image dump、image task、docker 镜像搬运/迁移时使用。
 ---
 
 # ROCK CLI 使用指南
@@ -170,7 +170,37 @@ rc expr aone-bench-test sandboxes stop --dry-run
 rc expr aone-bench-test sandboxes stop -y --concurrency 10
 ```
 
-详细参数见 [references/agent.md](references/agent.md) 和 [references/experiment.md](references/experiment.md)。
+### 场景十一：镜像转储（仓库间镜像 / 沙箱传输）
+
+适用：将 Docker 镜像从源仓库镜像到目标仓库、通过沙箱批量搬运镜像、管理转储任务
+
+```bash
+# 仓库间镜像单个镜像（mirror）
+rc image mirror nginx:latest \
+  --target-registry registry.example.com \
+  --target-username user --target-password pass
+
+# 从文件批量镜像 + 并发沙箱
+rc image mirror -f images.jsonl -c 10 --mode remote \
+  --target-registry registry.example.com \
+  --target-username user --target-password pass
+
+# 使用本地 Docker（无需沙箱）
+rc image mirror nginx:latest --mode local \
+  --target-registry registry.example.com \
+  --target-username user --target-password pass
+
+# 通过沙箱转储镜像（dump）
+rc image dump nginx:latest python:3.11 --concurrency 2
+
+# 管理转储任务（task）
+rc image task list                  # 列出所有任务
+rc image task status <task-id> -v   # 查看任务状态（含每条镜像详情）
+rc image task resume <task-id>      # 恢复失败任务
+rc image task delete <task-id>      # 删除任务
+```
+
+详细参数见 [references/agent.md](references/agent.md)、[references/experiment.md](references/experiment.md) 和 [references/image.md](references/image.md)。
 
 ---
 
