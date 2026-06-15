@@ -35,9 +35,47 @@ run  ──→  report  ──→  sync(可选)  ──→  diagnose  ──→ 
 
 > `--dataset` 和 `--split` 在不指定 `--tasks` 时必传。
 
-### rockcli 透传参数
+### Agent / Bench 取值 — 实时查询，不要写死
 
-以下参数直接透传给 `rc agent run`，不传则使用 rockcli 内置默认值：
+rockcli 会持续升级，支持的 agent 和 bench 列表随版本变化。**不要依赖本文档里的固定
+清单**——用前先跑 `rc agent run --help` 查看当前支持的 `--agent` / `--bench` 取值
+（帮助里的"常用取值"段），以实际输出为准。bench 模板还可用
+`rc agent deps sync benchhub` 更新。
+
+其中两个 `--agent` 是语义稳定的 **baseline**（用途不随版本变）：
+
+| Agent | 说明 |
+|-------|------|
+| `oracle` | **上界 baseline**：直接提交正确答案，用于验证评分/环境链路 |
+| `nop` | **下界 baseline**：不做任何操作，用于验证派发/环境链路 |
+
+### ⚠️ 全量回归前先做环境验证（oracle / nop）
+
+`oracle` 和 `nop` 是两个特殊的 baseline agent，**不是真正跑评估**，而是用来快速验证
+镜像/集群/数据集/评分链路是否通畅。**在发起任何全量回归（用真实 agent 跑整个数据集）
+之前，必须先询问用户：是否要先用 `oracle` 和/或 `nop` 小批量跑几条任务验证环境？**
+
+- `oracle` 跑通 → 评分链路、reward 计算正常（理论上 reward 应接近满分）
+- `nop` 跑通 → 任务派发、沙箱启动、镜像/集群配置正常（reward 应为 0/下界）
+- 两者都跑通后，再用真实 agent 发起全量回归，避免环境问题导致整批失败、浪费资源
+
+验证示例（用 `--tasks` 选几条代表性任务，小并发）：
+
+```bash
+# 先用 oracle 验证评分链路
+python3 regression.py run --bench aone-bench --tasks <task1>,<task2> \
+  --agent oracle --concurrency 2 --window-size 0 [其他经用户确认的环境参数]
+
+# 再用 nop 验证派发/环境链路
+python3 regression.py run --bench aone-bench --tasks <task1>,<task2> \
+  --agent nop --concurrency 2 --window-size 0 [其他经用户确认的环境参数]
+```
+
+### rockcli 透传参数（需先与用户确认）
+
+镜像、集群、模型、规格等环境/运行参数直接**按用户指定的值**透传给 `rc agent run`。
+**不要自行假定或注入任何默认值**——发起回归前先向用户确认需要设置哪些参数，
+只透传用户明确提供的 flag；用户未提供的参数一律不传。
 
 | 参数 | 说明 |
 |------|------|
@@ -49,15 +87,17 @@ run  ──→  report  ──→  sync(可选)  ──→  diagnose  ──→ 
 | `--api-key` | API 密钥 |
 | `--ee KEY=VALUE` | 沙箱环境变量，可多次传 |
 | `--set path=value` | YAML 字段覆盖，可多次传 |
-| `--pre` / `--no-pre` | 预发/正式环境（默认预发） |
+| `--pre` / `--no-pre` | 预发 / 正式环境（脚本默认 `--pre` 预发） |
 | `--namespace` | ROCK 项目空间 |
 | `--cpus` | CPU 规格（Core） |
 | `--memory` | 内存规格（GiB） |
-| `--with-companion` | 启用陪跑助手（如 `claude-code`） |
+| `--with-companion` | 启用陪跑助手（透传为 rc `--with`，当前支持 `claude-code`） |
 | `--config` | JobConfig YAML 配置文件路径 |
-| `--async-mode` | 异步模式 |
+| `--async-mode` | 异步模式（透传为 rc `--async`） |
 | `--user-id` | 用户 ID（工号） |
-| `--base-url` | 服务端地址 |
+| `--base-url` | 服务端地址（rc 默认 `http://xrl.alibaba-inc.com`） |
+
+> 说明：上表是 `regression.py` 的参数名，部分会翻译成不同的 rc flag（`--with-companion`→`--with`、`--async-mode`→`--async`）。`--pre` 是脚本固有默认（默认预发），属脚本行为，不在"需向用户确认"之列；需要确认的是镜像/集群/模型/规格/环境变量等环境参数。
 
 ### 调度控制参数
 
@@ -247,8 +287,18 @@ python3 regression.py retry --tasks codereview-123,codereview-456 \
 
 ### 场景 A：正常回归
 
+> 发起前先与用户确认 bench、dataset、split、agent、concurrency，以及镜像/集群/模型/
+> 规格/环境变量等透传参数——不要自行假定默认值，只透传用户指定的参数。
+> 并询问用户是否先用 `oracle` / `nop` 小批量验证环境（见上文"环境验证"节）。
+
 ```bash
-# 1. 发起
+# 0.（可选，建议）先用 oracle / nop 小批量验证环境，确认通过后再发起全量
+python3 regression.py run --bench aone-bench --tasks <task1>,<task2> \
+  --agent oracle --concurrency 2 --window-size 0
+python3 regression.py run --bench aone-bench --tasks <task1>,<task2> \
+  --agent nop --concurrency 2 --window-size 0
+
+# 1. 发起全量（以下参数均按用户确认结果填写）
 python3 regression.py run --bench aone-bench --dataset alibaba/aone-bench-java100 \
   --split delivery_0609-cn --agent claude-code --concurrency 30 --window-size 0
 

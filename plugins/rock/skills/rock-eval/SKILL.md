@@ -1,13 +1,6 @@
 ---
 name: rock-eval
-description: |
-  Run and manage full regression evaluations for AI agents using rockcli (rc) and regression.py.
-  Use this skill whenever the user mentions: benchmark, regression, evaluation, agent eval, aone-bench,
-  running tasks on a dataset, viewing eval results/reports, diagnosing failures, retrying failed tasks,
-  rockcli, rc agent run, reward scores, pass rate, or anything related to AI agent benchmark evaluation.
-  Also use when the user references regression.py, result JSON files, experiment IDs, or wants to
-  dispatch batch agent tasks against a dataset. Even if they don't say "regression" explicitly but
-  describe running an agent across multiple tasks and checking results, this skill applies.
+description: 使用 rockcli（rc）和 regression.py 运行与管理 AI Agent 的完整回归评估。适用场景：在数据集上批量跑任务、查看评估结果/报告、诊断失败用例、重试失败任务、查看 reward 分数与通过率（pass rate）。当用户提到 benchmark、回归测试 regression、评估 evaluation、agent eval、aone-bench、rc agent run、跑数据集、批量分发 agent 任务、regression.py、结果 JSON 文件、实验 ID，或描述"让 agent 在多个任务上运行并检查结果"（即使没明说 regression）时使用。
 ---
 
 # Rock Eval — AI Agent Regression Evaluation
@@ -67,16 +60,42 @@ python3 regression.py run \
 
 | Arg | Purpose |
 |-----|---------|
-| `--bench` | Bench template (e.g. `aone-bench`, `SWE-bench`, `terminal-bench-2`) |
-| `--agent` | Agent name (e.g. `claude-code`, `swe-agent`, `mini-swe-agent`) |
+| `--bench` | Bench template — run `rc agent run --help` for current values |
+| `--agent` | Agent name — run `rc agent run --help` for current values |
 | `--concurrency` | Max parallel tasks |
 | `--window-size` | Sliding window size (`0` = dispatch all at once) |
 
 `--dataset` and `--split` are required unless `--tasks` is specified.
 
-### Optional arguments (pass-through to rockcli)
+### Agent / bench values — query them live, don't hardcode
 
-All `rc agent run` parameters are supported: `--image`, `--cluster`, `--model`, `--ee KEY=VALUE`, `--set path=value`, `--pre`/`--no-pre`, `--namespace`, `--cpus`, `--memory`, `--with-companion`, `--config`, `--async-mode`, `--user-id`, `--base-url`, `--api-key`.
+The set of supported agents and benches changes as rockcli upgrades. **Do not rely
+on a hardcoded list** — run `rc agent run --help` to see the currently supported
+`--agent` and `--bench` values (the "常用取值" section), and use those. Bench
+templates can also be refreshed with `rc agent deps sync benchhub`.
+
+Two `--agent` values are **stable baselines** whose meaning doesn't change between
+versions:
+
+| Agent | Meaning |
+|-------|---------|
+| `oracle` | Upper-bound baseline — submits the correct answer; validates the scoring/reward chain |
+| `nop` | Lower-bound baseline — does nothing; validates dispatch + image/cluster/sandbox setup |
+
+> ⚠️ **Before launching any full regression with a real agent, ask the user whether
+> to first run a small `oracle` and/or `nop` smoke check** (a few `--tasks` at low
+> concurrency) to verify the environment — scoring chain via `oracle` (reward ≈ full),
+> dispatch/image/cluster via `nop` (reward ≈ 0). This catches environment problems
+> before they fail the whole batch. See `references/sop.md` for the procedure.
+
+### Pass-through arguments — confirm with the user first
+
+Environment/runtime parameters such as image, cluster, agent, model, and resource
+specs are **passed through to `rc agent run` exactly as the user specifies**. Do
+**not** assume or inject any default values for these — before dispatching, ask the
+user which ones they want to set, and only pass the flags they provide.
+
+Supported pass-through flags: `--image`, `--cluster`, `--model`, `--ee KEY=VALUE`, `--set path=value`, `--pre`/`--no-pre`, `--namespace`, `--cpus`, `--memory`, `--with-companion`, `--config`, `--async-mode`, `--user-id`, `--base-url`, `--api-key`.
 
 ### Control arguments
 
@@ -209,9 +228,14 @@ All subcommands accept an optional `experiment` positional argument:
 
 ### "I want to run a new benchmark"
 
-1. Confirm: bench name, dataset, split, agent, concurrency
-2. Run `regression.py run` with those parameters
-3. When done, generate HTML report
+1. Confirm with the user: bench name, dataset, split, agent, concurrency, and any
+   pass-through parameters they need (image, cluster, model, cpus/memory, env vars,
+   namespace, pre/prod). Do not assume defaults for these — only pass what the user
+   specifies.
+2. **Ask whether to first smoke-check the environment with `oracle` / `nop`** on a
+   few tasks before the full run (see Section 1). Skip only if the user declines.
+3. Run `regression.py run` with the confirmed parameters
+4. When done, generate HTML report
 
 ### "The run got interrupted"
 

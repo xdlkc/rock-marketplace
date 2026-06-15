@@ -68,13 +68,22 @@ rc agent run --bench terminal-bench-2 --agent swe-agent \
   --tasks fix-git gcode-to-text regex-log --concurrency 2
 ```
 
-### 常用 bench 模板
+### 查看可用 bench / agent（实时查询，不要写死）
 
-`aone-bench` `SWE-bench` `bizfinbench` `hle` `pinchbench` `OfficeQA` `mcp-atlas` `toolathlon` `mcpmark` `claw-eval` `terminal-bench-2` `APEX-Agents` `webdev-bench`
+支持的 bench 模板和 agent 随 rockcli 版本变化，**始终以实时查询为准**：
 
-### 常用 agent
+```bash
+# 当前支持的 bench / agent（看输出里的"常用取值"段）
+rc agent run --help
 
-`claude-code` `swe-agent` `mini-swe-agent` `opencode` `openhands` `openhands-sdk` `codex` `aider` `cline-cli` `cursor-cli` `gemini-cli` `goose` `kimi-cli` `openclaw` `qwen-coder` `terminus-2` `oracle`(上界) `nop`(下界)
+# 刷新 benchhub 模板列表
+rc agent deps sync benchhub
+```
+
+两个语义稳定的 baseline agent（用途不随版本变）：
+
+- `oracle` — 上界 baseline，提交正确答案，验证评分链路
+- `nop` — 下界 baseline，不做操作，验证派发/环境链路
 
 ---
 
