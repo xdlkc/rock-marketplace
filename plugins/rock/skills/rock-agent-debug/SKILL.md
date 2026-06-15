@@ -1,6 +1,6 @@
 ---
 name: rock-agent-debug
-description: 排查运行在 ROCK 沙箱（sandbox）中的 Agent Job。支持 Harbor Job 和 Bash Job 两种类型。当用户提供沙箱 ID 或实验 ID 并询问 job 状态、进度、日志、reward、agent 执行情况，或遇到 job 失败、trial 异常、reward 为 0、agent 崩溃等问题时使用。触发词：沙箱里跑的 job、查 sandbox 状态、harbor run 失败、bash job 报错、bench 跑不通、查 reward、看 agent 日志、排查 bench、agent view、agent fs、查看 trial、查看轨迹。
+description: 排查运行在 ROCK 沙箱中的 Agent Job（Harbor Job / Bash Job），并产出落盘诊断报告。用途：定位 job 失败、trial 异常、reward 为 0、agent 崩溃等问题。当用户给出沙箱 ID 或实验 ID，要查 job 的状态 / 进度 / 日志 / reward / 执行轨迹（agent view / fs / trajectory），或排查 bench 跑不通时使用。
 ---
 
 # Rock Agent Debug Skill

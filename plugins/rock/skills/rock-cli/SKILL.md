@@ -1,6 +1,6 @@
 ---
 name: rock-cli
-description: ROCK CLI 使用指南。适用场景：安装/更新 rockcli、起沙箱/启动沙箱、停止沙箱、在沙箱里执行命令/exec、上传文件到沙箱、从沙箱下载文件、连接沙箱/attach/交互式 REPL、查看沙箱历史/history、回放请求/replay、查看状态/status、运行 AI Agent 评估任务、查看 Agent Job/Task/Trial 信息（agent view）、Agent 文件操作（agent fs ls/cat/download/artifacts）、实验管理（experiment/expr 查看沙箱列表/批量停止）、镜像转储（image mirror/dump/task，仓库间镜像 Docker 镜像、通过沙箱传输镜像、管理转储任务）。当用户提到 sandbox、rockcli、rc 命令、沙箱操作、agent 评估、agent view、agent fs、experiment、expr、查看 job、查看 trial、查看轨迹 trajectory、批量停止沙箱、镜像转储、image mirror、image dump、image task、docker 镜像搬运/迁移时使用。
+description: rockcli（rc）命令使用指南，覆盖沙箱、agent 评估、实验、镜像等全部操作。用途：查 rc 命令的用法 / 参数，或用 rc 操作沙箱（起停、exec、上传下载、attach、history、replay、status）、运行与查看 agent 评估（agent run / view / fs）、管理实验（experiment / expr）、转储镜像（image mirror / dump / task）。当用户提到 rockcli、rc 命令、sandbox 操作、agent view、experiment、镜像搬运等时使用。
 ---
 
 # ROCK CLI 使用指南
