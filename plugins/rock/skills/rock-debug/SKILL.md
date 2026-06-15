@@ -1,6 +1,6 @@
 ---
 name: rock-debug
-description: ROCK 沙箱故障的只读排查指南——通过日志、操作历史、状态、replay、只读 exec 定位问题，绝不改动沙箱。用途：沙箱启动失败、无响应、exec 报错、状态异常时的诊断。当用户说沙箱报错 / 挂了 / 不可用，或需要 log search、log tail、查 history、replay 来找原因时使用；具体 rc 命令见配套的 rock-cli。
+description: 使用 rockcli（rc）对 ROCK 沙箱做只读故障排查：通过日志、操作历史、状态和回放定位问题，不改动沙箱。当用户的沙箱启动失败、无响应、报错或状态异常，需要诊断原因时使用。
 ---
 
 # ROCK 沙箱排查指南

@@ -1,6 +1,6 @@
 ---
 name: rock-eval
-description: 用 rockcli（rc）和 regression.py 跑 AI Agent 的批量回归评估，覆盖发起、监控、报告、诊断、重试全流程。用途：在数据集上批量跑任务（benchmark / regression / agent eval）、生成结果报告、排查失败用例、重试失败任务。当用户提到回归测试、跑数据集、aone-bench、rc agent run、查看 reward / pass rate、regression.py、实验 ID，或描述让 agent 在多个任务上运行并检查结果时使用。
+description: 使用 rockcli（rc）对 AI Agent 做批量回归评估：在数据集上跑分、生成报告、排查与重试失败用例。当用户要跑 benchmark / regression / agent eval、查看 reward 与通过率，或对一批任务的评估结果做分析时使用。
 ---
 
 # Rock Eval — AI Agent Regression Evaluation
