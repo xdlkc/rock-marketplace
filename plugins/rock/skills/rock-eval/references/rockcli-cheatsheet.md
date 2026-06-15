@@ -6,6 +6,39 @@
 
 ---
 
+## 从 bench 反查数据集并获取 task 列表
+
+当用户只给了 bench 名字（没给 dataset/split）时，**先从 bench template 反查它跑的是哪个
+数据集**，再据此获取 task 列表：
+
+```bash
+# 1. 查 bench template 全量配置，看 datasets 字段
+rc agent bench getconfig <BENCH> --raw
+```
+
+template 里的 `datasets` 字段形如：
+
+```yaml
+datasets:
+  - registry:
+      split: "test"            # ← split
+    name: "alibaba/aone-bench-java100"   # ← 数据集名
+    task_names:
+      - ""                     # 空 → task 在数据集里，需用 rc datasets tasks 查
+      # - "fix-git"            # 非空 → task_names 直接内嵌在 template 里
+```
+
+```bash
+# 2. 用反查到的 dataset + split 获取 task 列表
+rc datasets <NAME> tasks --split <SPLIT> --pre --api-key <KEY>
+```
+
+> **回退**：若该数据集不支持 `tasks` 子命令、或查不到任何 task，则改用 template `--raw`
+> 输出里 `datasets[].task_names` 的内嵌列表作为 task 来源。
+> harbor 类 bench（如 `harborframework/*`）template 必有 `datasets.name`，可稳定走第 1-2 步。
+
+---
+
 ## 数据集管理 (`rc datasets`)
 
 ```bash

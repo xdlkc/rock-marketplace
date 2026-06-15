@@ -35,6 +35,21 @@ run  ──→  report  ──→  sync(可选)  ──→  diagnose  ──→ 
 
 > `--dataset` 和 `--split` 在不指定 `--tasks` 时必传。
 
+### 当用户只给 bench 名字时，先反查数据集再取 task
+
+用户常常只说一个 bench 名（不给 dataset/split）。此时**不要猜数据集**，按下面顺序确认：
+
+1. `rc agent bench getconfig <BENCH> --raw` 看 template 的 `datasets` 字段，拿到数据集
+   `name`、`registry.split`、`task_names`。
+2. 用反查到的 dataset + split 跑 `rc datasets <NAME> tasks --split <SPLIT>` 获取 task 列表，
+   再把 dataset/split 传给 `regression.py run`（或把 task 列表用 `--tasks` 传）。
+3. **回退**：有的 bench 的数据集不支持 `tasks` 子命令（查不到 task）。此时改用 template
+   `--raw` 输出里 `datasets[].task_names` 的内嵌列表作为 task 来源。不要凭空假设，先
+   实际看一眼 `--raw` 输出再决定。
+
+> harbor 类 bench（如 `harborframework/*`）template 必有 `datasets.name`，第 1-2 步对它们
+> 稳定可用。命令与 YAML 结构详见 `references/rockcli-cheatsheet.md`。
+
 ### Agent / Bench 取值 — 实时查询，不要写死
 
 rockcli 会持续升级，支持的 agent 和 bench 列表随版本变化。**不要依赖本文档里的固定

@@ -67,6 +67,24 @@ python3 regression.py run \
 
 `--dataset` and `--split` are required unless `--tasks` is specified.
 
+### Resolving the task list when the user only gives a bench name
+
+If the user provides a bench name but no `--dataset`/`--split`, **do not guess** —
+resolve the dataset from the bench template first:
+
+1. Run `rc agent bench getconfig <BENCH> --raw` and read the `datasets` field. It
+   gives the dataset `name`, `registry.split`, and `task_names`.
+2. Get the task list with `rc datasets <NAME> tasks --split <SPLIT>`, then pass the
+   dataset/split to `regression.py run` (or pass the task list via `--tasks`).
+3. **Fallback** — some benches don't support the `tasks` subcommand (the dataset
+   returns nothing). In that case, use the `task_names` embedded in the template's
+   `--raw` output as the task source. Don't assume; actually inspect the `--raw`
+   output to decide.
+
+> Harbor-based benches (e.g. `harborframework/*`) always carry `datasets.name` in
+> their template, so step 1-2 works for them reliably. See
+> `references/rockcli-cheatsheet.md` for the exact commands and YAML shape.
+
 ### Agent / bench values — query them live, don't hardcode
 
 The set of supported agents and benches changes as rockcli upgrades. **Do not rely
