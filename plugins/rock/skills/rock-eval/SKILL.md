@@ -62,7 +62,7 @@ python3 regression.py run \
 |-----|---------|
 | `--bench` | Bench template — run `rc agent run --help` for current values |
 | `--agent` | Agent name — run `rc agent run --help` for current values |
-| `--concurrency` | Max parallel tasks |
+| `--concurrency` | Max parallel tasks — **must not exceed 10** (shared ROCKCLI quota) |
 | `--window-size` | Sliding window size (`0` = dispatch all at once) |
 
 `--dataset` and `--split` are required unless `--tasks` is specified.
@@ -94,6 +94,9 @@ Environment/runtime parameters such as image, cluster, agent, model, and resourc
 specs are **passed through to `rc agent run` exactly as the user specifies**. Do
 **not** assume or inject any default values for these — before dispatching, ask the
 user which ones they want to set, and only pass the flags they provide.
+
+> **`--model` is optional.** If omitted, the run uses the model shared by ROCKCLI —
+> no need to set it unless the user wants a specific model.
 
 Supported pass-through flags: `--image`, `--cluster`, `--model`, `--ee KEY=VALUE`, `--set path=value`, `--pre`/`--no-pre`, `--namespace`, `--cpus`, `--memory`, `--with-companion`, `--config`, `--async-mode`, `--user-id`, `--base-url`, `--api-key`.
 

@@ -30,7 +30,7 @@ run  ──→  report  ──→  sync(可选)  ──→  diagnose  ──→ 
 |------|------|
 | `--bench` | Bench 模板名称（如 `aone-bench`） |
 | `--agent` | Agent 名称（如 `claude-code`、`mini-swe-agent`） |
-| `--concurrency` | 最大并发数 |
+| `--concurrency` | 最大并发数，**不能超过 10**（ROCKCLI 共享配额上限） |
 | `--window-size` | 滑动窗口大小（`0` = 一次性全部派发） |
 
 > `--dataset` 和 `--split` 在不指定 `--tasks` 时必传。
@@ -83,7 +83,7 @@ python3 regression.py run --bench aone-bench --tasks <task1>,<task2> \
 | `--split` | 数据集 split |
 | `--image` | Docker 镜像 |
 | `--cluster` | 集群标识 |
-| `--model` | 模型名称 |
+| `--model` | 模型名称（**可不填，不填则用 ROCKCLI 共享模型**） |
 | `--api-key` | API 密钥 |
 | `--ee KEY=VALUE` | 沙箱环境变量，可多次传 |
 | `--set path=value` | YAML 字段覆盖，可多次传 |
@@ -117,7 +117,7 @@ python3 regression.py run \
   --dataset alibaba/aone-bench-java100 \
   --split delivery_0609-cn \
   --agent claude-code \
-  --concurrency 30 \
+  --concurrency 10 \
   --window-size 0
 
 # 指定镜像 + 模型 + 环境变量
@@ -126,7 +126,7 @@ python3 regression.py run \
   --dataset alibaba/aone-bench-java100 \
   --split delivery_0609-cn \
   --agent mini-swe-agent \
-  --concurrency 20 \
+  --concurrency 10 \
   --window-size 0 \
   --image rock-registry-vpc.cn-shanghai.cr.aliyuncs.com/harbor/harbor:33180a83 \
   --model glm-5.1 \
@@ -139,7 +139,7 @@ python3 regression.py run --resume \
   --dataset alibaba/aone-bench-java100 \
   --split delivery_0609-cn \
   --agent claude-code \
-  --concurrency 30 \
+  --concurrency 10 \
   --window-size 0
 ```
 
@@ -300,7 +300,7 @@ python3 regression.py run --bench aone-bench --tasks <task1>,<task2> \
 
 # 1. 发起全量（以下参数均按用户确认结果填写）
 python3 regression.py run --bench aone-bench --dataset alibaba/aone-bench-java100 \
-  --split delivery_0609-cn --agent claude-code --concurrency 30 --window-size 0
+  --split delivery_0609-cn --agent claude-code --concurrency 10 --window-size 0
 
 # 2. 查看报告
 python3 regression.py report --format html --open
@@ -317,7 +317,7 @@ python3 regression.py report
 
 # 3. 续跑未完成的任务
 python3 regression.py run --resume --bench aone-bench --dataset alibaba/aone-bench-java100 \
-  --split delivery_0609-cn --agent claude-code --concurrency 30 --window-size 0
+  --split delivery_0609-cn --agent claude-code --concurrency 10 --window-size 0
 ```
 
 ### 场景 C：失败排查 + 定向重跑
