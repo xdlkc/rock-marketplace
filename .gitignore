@@ -4,6 +4,8 @@ __pycache__/
 .env
 node_modules/
 .worktrees/
+.claude/worktrees/
+.claude/skills/*-workspace/
 skills-lock.json
 .agents/
 .adal/

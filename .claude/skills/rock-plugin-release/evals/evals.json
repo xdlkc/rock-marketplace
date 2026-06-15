@@ -1,0 +1,68 @@
+{
+  "skill_name": "rock-plugin-release",
+  "evals": [
+    {
+      "id": 1,
+      "name": "detect-existing-inconsistency",
+      "prompt": "我刚才给 rock plugin 加了个 rock-eval skill，改了 registry.json 但好像没全部同步。帮我检查一下这个 marketplace 仓库现在有没有不一致的地方，应该怎么修。",
+      "expected_output": "应运行一致性校验脚本，发现 plugin.json(1.0.0) vs registry.json(1.1.0) 版本不一致，并说明需要把 plugin.json 也升到 1.1.0，或确认版本后统一",
+      "files": [],
+      "assertions": [
+        {
+          "text": "runs-consistency-script: 回复提到或运行了 check_consistency.py 校验脚本"
+        },
+        {
+          "text": "identifies-version-mismatch: 明确指出 plugin.json(1.0.0) 与 registry.json(1.1.0) 版本不一致"
+        },
+        {
+          "text": "proposes-unify-version: 建议统一版本（如把 plugin.json 升到 1.1.0）"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "add-new-skill-flow",
+      "prompt": "我要给 rock plugin 新增一个叫 rock-sandbox-check 的 skill，用来快速检查沙箱健康状态。帮我走完整流程，确保所有该改的地方都改到，版本号也给个建议。",
+      "expected_output": "应列出/执行五处同步（创建 SKILL.md、创建顶层软链、改 plugin.json、改 registry.json skills 列表+version+updated_at、改 README），并按 semver 建议升 minor",
+      "files": [],
+      "assertions": [
+        {
+          "text": "lists-five-sync-points: 覆盖五处同步点（skills目录/软链/plugin.json/registry.json/README）"
+        },
+        {
+          "text": "mentions-symlink-creation: 提到创建顶层 skills/ 软链"
+        },
+        {
+          "text": "updates-registry-skills-list: 提到 registry.json 的 skills 数组需加入新 skill"
+        },
+        {
+          "text": "suggests-minor-bump: 建议 semver 升 minor"
+        },
+        {
+          "text": "mentions-updated_at: 提到刷新 registry.json 的 updated_at"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "version-bump-for-removal",
+      "prompt": "我打算把 rock-agent-debug 这个 skill 从 rock plugin 里删掉。这会影响版本号吗？应该怎么处理。",
+      "expected_output": "应说明删除 skill 属于破坏性变更，建议升 major 版本（如 1.x.x -> 2.0.0），并说明需同步五处：删目录、删软链、registry 移除条目+升 major+updated_at、plugin.json 升 major、README 移除行，最后跑校验",
+      "files": [],
+      "assertions": [
+        {
+          "text": "flags-as-breaking: 说明删除 skill 是破坏性变更"
+        },
+        {
+          "text": "suggests-major-bump: 建议 semver 升 major（如 2.0.0）"
+        },
+        {
+          "text": "mentions-remove-symlink: 提到删除顶层 skills/ 软链"
+        },
+        {
+          "text": "mentions-remove-from-registry: 提到从 registry.json skills 数组移除该 skill"
+        }
+      ]
+    }
+  ]
+}

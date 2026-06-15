@@ -1,0 +1,302 @@
+# 全量回归 SOP
+
+基于 `regression.py` 的标准操作流程，覆盖：发起回归 → 监控进度 → 查看报告 → 排查失败 → 重跑修复。
+
+---
+
+## 流程总览
+
+```
+run  ──→  report  ──→  sync(可选)  ──→  diagnose  ──→  retry
+ ↑                                                        │
+ └────────────────────────────────────────────────────────┘
+```
+
+| 步骤 | 子命令 | 目的 |
+|------|--------|------|
+| 1. 发起回归 | `run` | 派发全量任务，产出结果 JSON |
+| 2. 查看报告 | `report` | 状态汇总 / Reward 分布 / 耗时 / 异常分类 |
+| 3. 同步状态 | `sync` | 刷新 dispatched/reward 缺失的任务 |
+| 4. 排查失败 | `diagnose` | 异常分组总览 + 单任务深入 |
+| 5. 重跑失败 | `retry` | 按异常类型/状态筛选重跑 |
+
+---
+
+## 1. 发起回归 (`run`)
+
+### 必传参数
+
+| 参数 | 说明 |
+|------|------|
+| `--bench` | Bench 模板名称（如 `aone-bench`） |
+| `--agent` | Agent 名称（如 `claude-code`、`mini-swe-agent`） |
+| `--concurrency` | 最大并发数 |
+| `--window-size` | 滑动窗口大小（`0` = 一次性全部派发） |
+
+> `--dataset` 和 `--split` 在不指定 `--tasks` 时必传。
+
+### rockcli 透传参数
+
+以下参数直接透传给 `rc agent run`，不传则使用 rockcli 内置默认值：
+
+| 参数 | 说明 |
+|------|------|
+| `--dataset` | 数据集名称 |
+| `--split` | 数据集 split |
+| `--image` | Docker 镜像 |
+| `--cluster` | 集群标识 |
+| `--model` | 模型名称 |
+| `--api-key` | API 密钥 |
+| `--ee KEY=VALUE` | 沙箱环境变量，可多次传 |
+| `--set path=value` | YAML 字段覆盖，可多次传 |
+| `--pre` / `--no-pre` | 预发/正式环境（默认预发） |
+| `--namespace` | ROCK 项目空间 |
+| `--cpus` | CPU 规格（Core） |
+| `--memory` | 内存规格（GiB） |
+| `--with-companion` | 启用陪跑助手（如 `claude-code`） |
+| `--config` | JobConfig YAML 配置文件路径 |
+| `--async-mode` | 异步模式 |
+| `--user-id` | 用户 ID（工号） |
+| `--base-url` | 服务端地址 |
+
+### 调度控制参数
+
+| 参数 | 说明 |
+|------|------|
+| `--resume` | 续跑模式（跳过已有 success + error 的任务） |
+| `--tasks t1,t2,...` | 手动指定任务列表（此时 dataset/split 可省略） |
+| `--poll-interval` | 轮询间隔秒数（默认 10） |
+| `--poll-timeout` | 轮询超时秒数（默认 600） |
+
+### 示例
+
+```bash
+# 标准全量回归
+python3 regression.py run \
+  --bench aone-bench \
+  --dataset alibaba/aone-bench-java100 \
+  --split delivery_0609-cn \
+  --agent claude-code \
+  --concurrency 30 \
+  --window-size 0
+
+# 指定镜像 + 模型 + 环境变量
+python3 regression.py run \
+  --bench aone-bench \
+  --dataset alibaba/aone-bench-java100 \
+  --split delivery_0609-cn \
+  --agent mini-swe-agent \
+  --concurrency 20 \
+  --window-size 0 \
+  --image rock-registry-vpc.cn-shanghai.cr.aliyuncs.com/harbor/harbor:33180a83 \
+  --model glm-5.1 \
+  --ee OPENAI_API_KEY=sk-xxx \
+  --ee OPENAI_BASE_URL=https://evamux.alibaba-inc.com/v1
+
+# 续跑（跳过 success + error）
+python3 regression.py run --resume \
+  --bench aone-bench \
+  --dataset alibaba/aone-bench-java100 \
+  --split delivery_0609-cn \
+  --agent claude-code \
+  --concurrency 30 \
+  --window-size 0
+```
+
+### 产出
+
+- 结果文件：`results/<dataset>-<timestamp>.json`
+- 日志目录：`logs/<dataset>-<timestamp>/`
+
+---
+
+## 2. 查看报告 (`report`)
+
+```bash
+# 查看最新实验（文本）
+python3 regression.py report
+
+# 指定实验 ID
+python3 regression.py report aone-bench-java100-20260613_002258
+
+# 指定结果文件
+python3 regression.py report ./results/aone-bench-java100-20260613_002258.json
+
+# JSON 格式（供脚本消费）
+python3 regression.py report --format json
+
+# 生成 HTML 可视化报告并打开浏览器
+python3 regression.py report --format html --open
+```
+
+### 报告内容
+
+| 区块 | 说明 |
+|------|------|
+| Header | 实验元信息（bench/dataset/split/agent/model/时间） |
+| 状态汇总 | success/error/dispatched 计数 + 百分比 + 进度条 |
+| Reward 分布 | min/max/mean/median/P25/P75/std + 直方图 |
+| 耗时分布 | min/max/mean/median/P25/P75 |
+| 异常分类 | 按 exception_type 分组计数 + 示例任务 |
+| 未完成告警 | dispatched 任务提示运行 sync |
+
+---
+
+## 3. 同步状态 (`sync`)
+
+用于回归中断或轮询超时后，从服务端刷新任务最新状态。
+
+```bash
+# 同步最新实验中的 dispatched 任务
+python3 regression.py sync
+
+# 指定实验
+python3 regression.py sync aone-bench-java100-20260613_002258
+
+# 预览变更，不实际写入
+python3 regression.py sync --dry-run
+
+# 强制重新同步所有任务（含已完成的）
+python3 regression.py sync --force
+```
+
+### 同步逻辑
+
+1. 筛选 dispatched 或 reward=null 的任务
+2. 通过 `rc agent view` 查询服务端最新状态
+3. 无 job_name 的 dispatched 任务标记为 error
+4. 更新结果 JSON 并打印变更摘要
+
+---
+
+## 4. 排查失败 (`diagnose`)
+
+### 总览模式 — 快速定位高频问题
+
+```bash
+# 全量异常总览
+python3 regression.py diagnose
+
+# 只看 error 状态
+python3 regression.py diagnose --status error
+
+# 只看特定异常类型
+python3 regression.py diagnose --exception RuntimeError
+```
+
+输出内容：
+- 按 exception_type 分组（计数 + 占比）
+- 去重后的 exception_message 模式（归一化变量部分）
+- 卡住的 dispatched 任务列表
+
+### 单任务深入 — 查看具体原因
+
+```bash
+# 查看单个任务详情 + 本地日志
+python3 regression.py diagnose --task codereview-21491816
+
+# 拉取远程日志
+python3 regression.py diagnose --task codereview-21491816 --remote
+
+# 查看执行轨迹
+python3 regression.py diagnose --task codereview-21491816 --trajectory
+
+# 查看产物清单
+python3 regression.py diagnose --task codereview-21491816 --artifacts
+
+# 本地日志只看最后 50 行
+python3 regression.py diagnose --task codereview-21491816 --tail 50
+```
+
+---
+
+## 5. 重跑失败 (`retry`)
+
+与 `--resume` 的区别：
+
+| | `run --resume` | `retry` |
+|---|---|---|
+| 跳过范围 | success + error | 只跳过 success |
+| 实验 ID | 沿用原 ID | 新建 ID（含 `retry_of` 引用） |
+| 筛选能力 | 无 | 按状态 / 异常类型 / 手动指定 |
+
+```bash
+# 重跑所有失败任务（error + dispatched）
+python3 regression.py retry aone-bench-java100-20260613_002258 \
+  --bench aone-bench \
+  --agent claude-code \
+  --concurrency 10 \
+  --window-size 0
+
+# 只重跑 error 状态
+python3 regression.py retry --filter error \
+  --bench aone-bench --agent claude-code --concurrency 10 --window-size 0
+
+# 只重跑特定异常类型
+python3 regression.py retry --filter error --exception-type RewardFileNotFoundError \
+  --bench aone-bench --agent claude-code --concurrency 10 --window-size 0
+
+# 手动指定重跑任务
+python3 regression.py retry --tasks codereview-123,codereview-456 \
+  --bench aone-bench --agent claude-code --concurrency 5 --window-size 0
+```
+
+---
+
+## 典型工作流
+
+### 场景 A：正常回归
+
+```bash
+# 1. 发起
+python3 regression.py run --bench aone-bench --dataset alibaba/aone-bench-java100 \
+  --split delivery_0609-cn --agent claude-code --concurrency 30 --window-size 0
+
+# 2. 查看报告
+python3 regression.py report --format html --open
+```
+
+### 场景 B：回归中断恢复
+
+```bash
+# 1. 同步中断前已派发的任务状态
+python3 regression.py sync
+
+# 2. 查看当前状态
+python3 regression.py report
+
+# 3. 续跑未完成的任务
+python3 regression.py run --resume --bench aone-bench --dataset alibaba/aone-bench-java100 \
+  --split delivery_0609-cn --agent claude-code --concurrency 30 --window-size 0
+```
+
+### 场景 C：失败排查 + 定向重跑
+
+```bash
+# 1. 看异常分布
+python3 regression.py diagnose
+
+# 2. 深入看具体任务
+python3 regression.py diagnose --task codereview-21491816 --remote --trajectory
+
+# 3. 重跑特定异常类型
+python3 regression.py retry --filter error --exception-type RuntimeError \
+  --bench aone-bench --agent claude-code --concurrency 10 --window-size 0
+
+# 4. 查看重跑结果
+python3 regression.py report --format html --open
+```
+
+---
+
+## 文件结构
+
+```
+results/
+  ├── aone-bench-java100-20260613_002258.json      # 结果数据
+  └── aone-bench-java100-20260613_002258.html      # 可视化报告
+logs/
+  └── aone-bench-java100-20260613_002258/
+      ├── codereview-21491816.log                   # 单任务日志
+      └── ...
+```
