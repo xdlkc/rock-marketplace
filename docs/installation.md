@@ -73,6 +73,8 @@ cp -r ~/Code/rock-marketplace/skills/rock-agent-debug ~/.claude/skills/
 | `rock-cli` | ROCK CLI 使用指南，涵盖沙箱管理、文件传输、交互式开发、Agent 评估等 |
 | `rock-debug` | 沙箱排查工具，按存活状态分流，支持日志搜索、exec 调试、history 回溯、replay 复现 |
 | `rock-agent-debug` | Agent Job 排查，支持 Harbor Job 和 Bash Job 的状态查询、日志分析、Reward 查看 |
+| `rock-eval` | 全量回归评测，支持批量任务派发、结果报告（文本/HTML）、状态同步、失败诊断、定向重跑 |
+| `rock-feedback` | Skill 反馈工具，把对 rock-* 技能的 bug/建议整理成结构化 GitHub Issue 或 PR 并提交 |
 
 ## 验证安装
 

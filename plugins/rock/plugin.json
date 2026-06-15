@@ -1,7 +1,7 @@
 {
   "name": "rock",
-  "version": "1.1.0",
-  "description": "ROCK 平台开发技能集，包含 CLI 使用指南、沙箱排查工具、Agent Job 调试工具和全量回归评测工具",
+  "version": "1.2.0",
+  "description": "ROCK 平台开发技能集，包含 CLI 使用指南、沙箱排查工具、Agent Job 调试工具、全量回归评测工具和 Skill 反馈工具",
   "author": {
     "name": "xdlkc"
   },
