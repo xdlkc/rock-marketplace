@@ -241,7 +241,16 @@ python3 regression.py report --format json | \
     "image": "rock-registry-vpc...:33180a83",
     "cluster": "",
     "ee": [],
-    "set": []
+    "set": [],
+    // 采样/推理参数。直接影响 pass rate 可比性：已知则必填、未知填 null，
+    // 不可省略（省略会让对比误判为"未检查"，等同放行不可比的 run）。
+    "sampling": {
+      "temperature": 1.0,            // 采样温度；未知填 null，不得省略
+      "top_p": 1.0,                  // top-p（可选）；未知填 null
+      "thinking": "high",            // extended thinking / reasoning 等级，"none"/"low"/"medium"/"high" 或数值；未知填 null，不得省略
+      "max_tokens": 64000,           // 单次最大输出 token；未知填 null，不得省略
+      "timeout": 1800                // 单 task 推理超时（秒），区别于 regression.py 的 --poll-timeout（调度超时）；未知填 null，不得省略
+    }
   },
 
   // ─── 汇总预期 ───
@@ -271,6 +280,11 @@ python3 regression.py report --format json | \
 | `reference_config` | 是 | 官方/参考使用的完整配置（用于 config drift 对比） |
 | `reference_config.bench` | 是 | 与实际 run 的 bench 必须匹配 |
 | `reference_config.model` | 否 | 空表示未知/未公开 |
+| `reference_config.sampling.temperature` | 否 | 采样温度；**已知必填，影响可比性**，未知填 `null` 不得省略 |
+| `reference_config.sampling.top_p` | 否 | top-p；未知填 `null`（可选） |
+| `reference_config.sampling.thinking` | 否 | extended thinking / reasoning 等级（`none`/`low`/`medium`/`high` 或数值）；**已知必填，影响可比性**，未知填 `null` 不得省略 |
+| `reference_config.sampling.max_tokens` | 否 | 单次最大输出 token；**已知必填，影响可比性**，未知填 `null` 不得省略 |
+| `reference_config.sampling.timeout` | 否 | 单 task 推理超时（秒），区别于 `--poll-timeout` 调度超时；**已知必填，影响可比性**，未知填 `null` 不得省略 |
 | `summary.total_tasks` | 是 | 参考结果涵盖的任务总数 |
 | `summary.expected_pass_rate` | 是 | 参考 pass rate（0-1 浮点数） |
 | `summary.expected_avg_reward` | 否 | 参考平均 reward |

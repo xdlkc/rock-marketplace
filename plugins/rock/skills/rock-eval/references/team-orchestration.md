@@ -49,7 +49,7 @@ Phase 1: 确认 + 冒烟（OracleChecker ∥ NopChecker 并行）
 Phase 1.5 (optional): 对齐基线确认
   Lead 询问是否对齐分数场景 →
     是 → 获取参考分数（用户提供 / 检索 leaderboard+paper）
-       → 配置交叉检查（标出 reference_config vs 本次 config 差异）
+       → 配置交叉检查（标出 reference_config vs 本次 config 差异，含采样/推理参数：temperature/thinking/max_tokens/推理超时）
        → 创建 baselines/<name>.json
     否 → 跳过，直接进 Phase 2
 
@@ -201,12 +201,16 @@ retry 版：命令换成 `retry --filter <F> --tasks <LIST 或省略> --exceptio
   1. 读取基线文件的 tasks 字段和 reference_config
   2. 读取实际结果的 tasks 字段
   3. 逐 task 对比 actual reward vs expected reward（跳过 expected_reward 为 null 的 task）
-  4. 配置对比：比较 reference_config vs configs/<EXP_ID>.json，标出差异项
+  4. 配置对比：比较 reference_config 全字段（含 sampling.*：temperature / top_p / thinking / max_tokens / timeout）vs configs/<EXP_ID>.json，标出差异项。采样/推理参数在实际配置里可能藏在三处，需逐一解出：
+     1) model 字段（核对版本）
+     2) set 列表（path=value，解析其中 temperature/thinking/max_tokens 等键）
+     3) config 字段指向的 JobConfig YAML 文件（其内容不在 configs/<EXP_ID>.json 内，需另外读取该 YAML 提取采样字段）
+     铁律：若 reference_config.sampling.* 任一字段在参考 baseline 里已知（非 null），但实际配置中无法确认或对不上，必须报"无法验证/不可比对齐"，不得静默通过。
   5. 若有 reward gap > 0.1 的 task，选取代表性 task 做深入诊断：
      python3 <regression.py 绝对路径> diagnose <EXP_ID> --task <TASK_ID> --remote --trajectory
 
 回我（只给结论）：
-  配置差异: <列出 reference_config 与实际 config 的不同字段>
+  配置差异: <列出 reference_config 与实际 config 的不同字段；sampling 维度差异单独列出（temperature/top_p/thinking/max_tokens/timeout 各项 actual vs expected）>
   分数对齐度: actual_pass_rate=X vs expected_pass_rate=Y, delta=Z
   gap 分布: 符合预期 N 个 / 低于预期 M 个 / 高于预期 K 个
   Top gap tasks: <列出 gap 最大的 3-5 个 task id + actual vs expected>

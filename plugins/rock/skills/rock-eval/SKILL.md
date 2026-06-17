@@ -130,6 +130,7 @@ versions:
    - image 版本不同（评分器版本升级可能影响 reward）
    - split 不同（任务集不同则 pass rate 不可比）
    - 环境变量差异（API endpoint、超时设置等）
+   - 采样/推理配置（temperature / top_p / thinking（含 reasoning 等级） / max_tokens / 推理超时）：参考来源若公开了这些值而本次 run 未对齐，pass rate 不可比；参考来源未公开则标注"采样配置未知，分数可比性受限"
 
 3. **创建对齐基线文件**：
    将参考分数整理为 task 粒度的 baseline 文件，存放于：
@@ -357,7 +358,7 @@ Read `references/rockcli-cheatsheet.md`, then use `rc datasets`, `rc agent bench
 
 1. 确认对齐目标：哪个 bench/dataset/split，参考来源是什么（leaderboard / paper / 内部历史）
 2. 获取参考分数：从来源提取 per-task reward（或至少 aggregate pass rate）
-3. 配置交叉检查：对比参考配置 vs 本次配置，标出差异（model / image / split / env vars）
+3. 配置交叉检查：对比参考配置 vs 本次配置，标出差异（model / image / split / env vars / 采样与推理参数：temperature · top_p · thinking · max_tokens · 推理超时）
 4. 创建 baseline 文件：`baselines/<name>.json`（格式见 `references/data-formats.md` § 对齐基线文件）
 5. Oracle/nop 冒烟验证（同标准流程）
 6. Run `regression.py run` with confirmed parameters

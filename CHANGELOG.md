@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.4.1] - 2026-06-17
+
+### Changed
+- **rock-eval**: alignment baseline 纳入采样/推理配置的可比性维度 — `reference_config` 新增 `sampling` 对象（temperature / top_p / thinking / max_tokens / timeout），配置交叉检查与 Diagnostician 对比逻辑同步覆盖这些参数（含从 model / set / JobConfig YAML 三处解出实际值）；参考已知而实际无法确认时强制报"不可比对齐"，不再静默放行
+
 ## [1.4.0] - 2026-06-17
 
 ### Added
