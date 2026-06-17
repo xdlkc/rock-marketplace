@@ -1,3 +1,6 @@
+> **⚠️ ARCHIVED** — 本文档为 v1 设计，已被 `2026-06-17-rock-eval-pipeline-v2-design.md` 替代。
+> 保留作为历史参考，运行态请参考 v2。
+
 # rock-eval Agent Team 编排设计
 
 > 日期：2026-06-17

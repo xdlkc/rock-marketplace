@@ -1,3 +1,25 @@
+# rock-eval Pipeline v2 Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 将 rock-eval agent team 从 v1（4 角色串行）升级到 v2（7 角色并行 pipeline），更新运行态 runbook 和 skill 决策树。
+
+**Architecture:** 纯文档/编排约定变更，不涉及 `regression.py` 代码改动。更新 `team-orchestration.md` 为 v2 runbook，更新 `SKILL.md` 决策树指向新流程，归档 v1 设计文档。
+
+**Tech Stack:** Markdown, Mermaid diagrams
+
+---
+
+### Task 1: 重写 team-orchestration.md runbook
+
+**Files:**
+- Modify: `plugins/rock/skills/rock-eval/references/team-orchestration.md`
+
+- [ ] **Step 1: 替换全文为 v2 runbook**
+
+将 `team-orchestration.md` 全文替换为以下内容（基于 v2 设计文档 §3-§7 的运行态精简版）：
+
+```markdown
 # rock-eval Agent Team 编排 Runbook v2
 
 > 本文档是 agent team 的**运行态 runbook**：跑全量回归时，Lead（主线程）按此协调 6 个专职 worker，
@@ -230,3 +252,110 @@ retry 版：命令换成 `retry --filter <F> --tasks <LIST 或省略> --exceptio
 - **Diagnostician 消化失真**：子 agent 可能归纳错根因。缓解：Lead 存疑时可让 Diagnostician 附"支撑结论的关键日志行（≤5 行）"。
 - **共享配额**：Runner 并发仍由 `--window-size` 控制，Diagnostician 并行 ≤ 2，不会叠加压力。
 - **Operator loop 终止条件**：无参数问题 或 用户叫停 或 连续 3 次调参未改善（避免死循环）。
+```
+
+- [ ] **Step 2: 验证 markdown 格式正确**
+
+Run: `head -5 plugins/rock/skills/rock-eval/references/team-orchestration.md`
+Expected: 看到 `# rock-eval Agent Team 编排 Runbook v2` 标题
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add plugins/rock/skills/rock-eval/references/team-orchestration.md
+git commit -m "docs(rock-eval): rewrite team-orchestration runbook for v2 pipeline"
+```
+
+---
+
+### Task 2: 更新 SKILL.md 决策树
+
+**Files:**
+- Modify: `plugins/rock/skills/rock-eval/SKILL.md:19-32`
+
+- [ ] **Step 1: 替换决策树部分**
+
+将 SKILL.md 中 `## Quick Start Decision Tree` 下的代码块替换为：
+
+```
+What does the user want to do?
+│
+├─ Run a new regression ──────────────→ Section 1: Run
+├─ Check results / get a report ──────→ Section 2: Report
+├─ Tasks stuck in "dispatched" ───────→ Section 3: Sync
+├─ Understand why tasks failed ───────→ Section 4: Diagnose
+├─ Rerun failed tasks ────────────────→ Section 5: Retry
+├─ Manual rc commands ────────────────→ Read references/rockcli-cheatsheet.md
+├─ Full regression (long run + multi-failure triage)
+│   → Read references/team-orchestration.md (v2: 7 角色并行 pipeline)
+├─ Need to adjust params after failures (stop/destroy/retry loop)
+│   → Read references/team-orchestration.md § Operator
+└─ Full SOP / workflow reference ─────→ Read references/sop.md
+```
+
+- [ ] **Step 2: 更新 Bundled Resources 表**
+
+在 SKILL.md 底部 `## Bundled Resources` 表中，将 `team-orchestration.md` 的描述更新为：
+
+```markdown
+| `references/team-orchestration.md` | Full regression with 7-role parallel pipeline (v2) — Lead / OracleChecker / NopChecker / Runner / Monitor / Diagnostician / Operator. Coordinate subagents so main context only holds conclusions. Includes Operator loop for stop→destroy→retune→rerun cycles |
+```
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add plugins/rock/skills/rock-eval/SKILL.md
+git commit -m "docs(rock-eval): update SKILL.md decision tree for v2 pipeline"
+```
+
+---
+
+### Task 3: 归档 v1 设计文档
+
+**Files:**
+- Modify: `docs/superpowers/specs/2026-06-17-rock-eval-agent-team-design.md:1-3`
+
+- [ ] **Step 1: 在 v1 文档头部添加归档标记**
+
+在文件第 1 行之前插入：
+
+```markdown
+> **⚠️ ARCHIVED** — 本文档为 v1 设计，已被 `2026-06-17-rock-eval-pipeline-v2-design.md` 替代。
+> 保留作为历史参考，运行态请参考 v2。
+
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add docs/superpowers/specs/2026-06-17-rock-eval-agent-team-design.md
+git commit -m "docs(rock-eval): archive v1 agent team design doc"
+```
+
+---
+
+### Task 4: 验证一致性
+
+- [ ] **Step 1: 检查交叉引用**
+
+确认以下引用路径一致：
+- `SKILL.md` 决策树 → `references/team-orchestration.md` ✓
+- `team-orchestration.md` 头部 → `docs/superpowers/specs/2026-06-17-rock-eval-pipeline-v2-design.md` ✓
+- v1 归档标记 → `2026-06-17-rock-eval-pipeline-v2-design.md` ✓
+
+Run: `grep -n "team-orchestration\|pipeline-v2-design\|agent-team-design" plugins/rock/skills/rock-eval/SKILL.md plugins/rock/skills/rock-eval/references/team-orchestration.md docs/superpowers/specs/2026-06-17-rock-eval-agent-team-design.md`
+
+Expected: 所有引用路径匹配实际文件名
+
+- [ ] **Step 2: 检查 7 角色在所有文档中一致**
+
+Run: `grep -c "OracleChecker\|NopChecker\|Runner\|Monitor\|Diagnostician\|Operator\|Lead" plugins/rock/skills/rock-eval/references/team-orchestration.md`
+
+Expected: 大于 0，所有 7 个角色名都出现
+
+- [ ] **Step 3: 最终 commit（如有修正）**
+
+```bash
+git add -A
+git commit -m "docs(rock-eval): fix cross-references in v2 pipeline docs"
+```

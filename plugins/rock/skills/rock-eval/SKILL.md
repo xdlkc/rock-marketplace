@@ -27,8 +27,10 @@ What does the user want to do?
 ├─ Understand why tasks failed ───────→ Section 4: Diagnose
 ├─ Rerun failed tasks ────────────────→ Section 5: Retry
 ├─ Manual rc commands ────────────────→ Read references/rockcli-cheatsheet.md
-├─ Full regression, worried about context bloat
-│   (long run + multi-failure triage) → Read references/team-orchestration.md
+├─ Full regression (long run + multi-failure triage)
+│   → Read references/team-orchestration.md (v2: 7 角色并行 pipeline)
+├─ Need to adjust params after failures (stop/destroy/retry loop)
+│   → Read references/team-orchestration.md § Operator
 └─ Full SOP / workflow reference ─────→ Read references/sop.md
 ```
 
@@ -277,7 +279,7 @@ All subcommands accept an optional `experiment` positional argument:
 | `references/sop.md` | User asks for the full SOP, typical workflows, or detailed parameter reference |
 | `references/rockcli-cheatsheet.md` | User needs raw `rc` commands outside of regression.py (manual queries, dataset browsing, sandbox management) |
 | `references/data-formats.md` | User asks about result JSON structure, report data format, task fields, exception types, or wants to parse/script against result files |
-| `references/team-orchestration.md` | Full regression expected to be long with multi-failure triage — coordinate Runner / Reporter / Diagnostician subagents so the main context only holds conclusions, not raw logs/trajectories |
+| `references/team-orchestration.md` | Full regression with 7-role parallel pipeline (v2) — Lead / OracleChecker / NopChecker / Runner / Monitor / Diagnostician / Operator. Coordinate subagents so main context only holds conclusions. Includes Operator loop for stop→destroy→retune→rerun cycles |
 | `scripts/regression.py` | The main script — run it, don't read it into context (2000+ lines) |
 
 ---
