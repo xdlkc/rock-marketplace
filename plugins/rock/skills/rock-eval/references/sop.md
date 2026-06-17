@@ -30,10 +30,31 @@ run  ──→  report  ──→  sync(可选)  ──→  diagnose  ──→ 
 |------|------|
 | `--bench` | Bench 模板名称（如 `aone-bench`） |
 | `--agent` | Agent 名称（如 `claude-code`、`mini-swe-agent`） |
-| `--concurrency` | 最大并发数，**不能超过 10**（ROCKCLI 共享配额上限） |
-| `--window-size` | 滑动窗口大小（`0` = 一次性全部派发） |
+| `--window-size` | **全局并发上限（滑动窗口）**：始终维持 N 个任务在飞，一个完成立刻补一个。**不能超过 10**（ROCKCLI 共享配额上限）。`0` = 不限制（全部并行） |
+| `--concurrency` | （兼容旧参数）与 `--window-size` 同义；两者同时给定时取较小值 |
 
-> `--dataset` 和 `--split` 在不指定 `--tasks` 时必传。
+> `--window-size` 限制的是「同时在飞的任务数」，**没有分批 barrier**——整个回归过程吞吐量始终维持在并发上限，不会出现「等满一批再开下一批」的空窗。`--dataset` 和 `--split` 在不指定 `--tasks` 时必传。
+
+### 配置保存与复用（`--save-config` / `--from-config`）
+
+每次 `run` / `retry` 都会**自动**把本次完整配置快照到 `configs/<experiment-id>.json`
+（与 `results/`、`logs/` 同级），方便追溯每次回归用了什么参数。另外两个 flag 支持存到
+自定义路径和从文件复跑：
+
+```bash
+# 把当前配置存成可复用模板
+python3 regression.py run --bench <BENCH> --agent <AGENT> --dataset <D> --split <S> \
+  --concurrency 5 --window-size 0 --image <IMG> --ee K=V \
+  --save-config ./my-template.json
+
+# 之后用模板复跑：只传想覆盖的参数，其余从 JSON 取
+python3 regression.py run --from-config ./my-template.json --concurrency 8
+```
+
+**合并语义**：JSON 是基底，CLI 显式传的参数覆盖 JSON 同名字段（没传的字段用 JSON 的值）。
+指定 `--from-config` 后，`--bench` / `--agent` 不再强制要求从 CLI 传入（可来自文件）。
+JSON 存的是全部 run 参数，**不含** experiment id（每次按 dataset + 时间戳重新生成）。注意
+`--config` 是 rc 的 JobConfig YAML，与本节无关。
 
 ### 当用户只给 bench 名字时，先反查数据集再取 task
 

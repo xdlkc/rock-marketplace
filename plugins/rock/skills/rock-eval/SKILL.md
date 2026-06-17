@@ -62,10 +62,10 @@ python3 regression.py run \
 |-----|---------|
 | `--bench` | Bench template — run `rc agent run --help` for current values |
 | `--agent` | Agent name — run `rc agent run --help` for current values |
-| `--concurrency` | Max parallel tasks — **must not exceed 10** (shared ROCKCLI quota) |
-| `--window-size` | Sliding window size (`0` = dispatch all at once) |
+| `--window-size` | **Global concurrency cap** — a sliding window that keeps N tasks in flight at all times: the moment one finishes, the next starts. **must not exceed 10** (shared ROCKCLI quota). `0` = no limit (all tasks in parallel) |
+| `--concurrency` | *(compat alias)* same meaning as `--window-size`; if both are given, the smaller value wins |
 
-`--dataset` and `--split` are required unless `--tasks` is specified.
+`--window-size`/`--concurrency` cap how many tasks run at once — there is no batch barrier, so throughput stays at the cap for the whole run. `--dataset` and `--split` are required unless `--tasks` is specified.
 
 ### Resolving the task list when the user only gives a bench name
 
@@ -127,9 +127,39 @@ Supported pass-through flags: `--image`, `--cluster`, `--model`, `--ee KEY=VALUE
 | `--poll-interval` | Seconds between status checks (default 10) |
 | `--poll-timeout` | Max wait per task in seconds (default 600) |
 
+### Configuration persistence (save / reuse run configs)
+
+Every `run` and `retry` **automatically** snapshots the full effective configuration to
+`configs/<experiment-id>.json` (alongside `results/` and `logs/`) so each regression is
+reproducible and traceable. Two flags let you also save to / load from a custom path:
+
+```bash
+# Save the current config to a reusable template
+python3 regression.py run --bench <BENCH> --agent <AGENT> ... \
+  --save-config ./my-template.json
+
+# Later, run from that template — CLI flags override the JSON's values
+python3 regression.py run --from-config ./my-template.json \
+  --concurrency 8          # only this overrides the file; rest comes from JSON
+```
+
+| Flag | Behavior |
+|------|----------|
+| `--save-config <path>` | Additionally save the effective config to `<path>` (template reuse) |
+| `--from-config <path>` | Load `<path>` as the base config; any CLI flag you pass overrides the matching JSON field |
+
+**Merge semantics:** JSON is the base; CLI flags override. A flag you pass on the command line
+wins; a field you omit is taken from the JSON. (`--bench`/`--agent` are no longer required on the
+CLI when they come from the file.)
+
+The JSON contains the full run parameter set (bench/dataset/split/agent, all pass-through
+params, tasks, concurrency/window, poll settings) — **not** the experiment id, which is
+regenerated per run. Note `--config` (rc's JobConfig YAML) is a different, pre-existing flag.
+
 ### Output
 
 - Result JSON: `results/<experiment-id>.json`
+- Config snapshot: `configs/<experiment-id>.json`
 - Task logs: `logs/<experiment-id>/<task-id>.log`
 
 ---
@@ -221,6 +251,10 @@ python3 regression.py retry --tasks t1,t2,t3 ...
 | Skips | success + error | success only |
 | Experiment ID | reuses original | new (with `retry_of` reference) |
 | Filtering | none | by status, exception type, manual list |
+
+`retry` supports the same **configuration persistence** flags as `run` — it auto-saves to
+`configs/<new-experiment-id>.json` and accepts `--save-config` / `--from-config` with identical
+merge semantics (JSON base, CLI overrides). See Section 1.
 
 ---
 

@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.0] - 2026-06-17
+
+### Added
+- **rock-eval** skill: configuration persistence — every `run`/`retry` auto-snapshots the full config to `configs/<experiment-id>.json`; new `--save-config <path>` saves to a custom template, `--from-config <path>` replays from JSON with CLI flags overriding
+
+### Fixed
+- rock-eval: window semantics — `--window-size` is now a true global concurrency cap (sliding window: one task finishes, the next starts immediately), eliminating the old batch-barrier wait where the next batch only began after the whole current batch finished. `--concurrency` kept as a compat alias (smaller value wins when both given)
+
 ## [1.2.0] - 2026-06-15
 
 ### Added

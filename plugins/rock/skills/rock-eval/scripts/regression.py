@@ -42,6 +42,37 @@ count_lock = threading.Lock()
 
 LINE = "=" * 70
 
+_UNSET = object()  # 占位符：表示 CLI 未显式传入该参数
+
+
+class _AppendUnsetAction(argparse.Action):
+    """append 兼容 _UNSET：flag 未出现时保留 _UNSET；首次出现时从 [] 起步再累加。
+
+    argparse 原生 append action 会直接对 default 对象调 .append()，
+    当 default=_UNSET 时会崩。此处手动把 _UNSET 视作「未初始化」。
+    """
+
+    def __call__(self, _parser, namespace, values, _option_string=None):  # argparse Action 固定签名
+        items = getattr(namespace, self.dest, _UNSET)
+        if items is _UNSET:
+            items = []
+        else:
+            # 走到此处 items 必为已有的列表；复制一份避免污染 default
+            items = list(items)  # type: ignore[arg-type]
+        items.append(values)
+        setattr(namespace, self.dest, items)
+
+
+# 可保存字段清单（顺序即 JSON 字段顺序，便于人读；不含 experiment_id）
+SAVE_FIELDS = [
+    "bench", "dataset", "split", "agent",
+    "image", "cluster", "model", "api_key",
+    "ee", "set", "pre", "namespace", "cpus", "memory",
+    "companion", "config", "async_mode", "user_id", "base_url",
+    "concurrency", "window_size", "tasks",
+    "poll_interval", "poll_timeout",
+]
+
 
 # ─── 工具函数 ───
 
@@ -290,6 +321,68 @@ def fetch_task_list(dataset, split, api_key):
     return tasks
 
 
+def save_config(args, path):
+    """把 SAVE_FIELDS 中各字段序列化为 JSON 写到 path（先建父目录）。"""
+    data = {f: getattr(args, f) for f in SAVE_FIELDS}
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    print(f"配置已保存: {path}")
+
+
+def load_config(path):
+    """读取 JSON 配置文件，返回 dict。"""
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def apply_config(args, config_path):
+    """--from-config：用 JSON 填充 CLI 未显式传入的字段，CLI 显式值覆盖 JSON。"""
+    cfg = load_config(config_path)
+    for f in SAVE_FIELDS:
+        if f not in cfg:
+            continue
+        cur = getattr(args, f, _UNSET)
+        # CLI 未传（_UNSET）才用 JSON 的值；CLI 传了则保留（覆盖 JSON）
+        if cur is _UNSET:
+            setattr(args, f, cfg[f])
+    print(f"已加载配置: {config_path}")
+
+
+def normalize_args(args):
+    """把所有仍为 _UNSET 的可保存字段还原成真实默认值；必传字段缺失则报错退出。
+
+    对 report/sync/diagnose 无害：这些子命令的 args 没有可保存属性，
+    getattr(args, f, None) 既非 _UNSET 也不会进入分支。
+    """
+    for f in SAVE_FIELDS:
+        if getattr(args, f, None) is not _UNSET:
+            continue
+        if f in ("bench", "agent"):
+            print("错误: 缺少必传参数 bench/agent", file=sys.stderr)
+            sys.exit(1)
+        elif f == "concurrency":
+            # 兼容同义词，可省略（缺省时仅用 window_size）
+            setattr(args, f, None)
+        elif f == "window_size":
+            # 主并发参数：缺省 = 0 = 不限制（全部并行）
+            setattr(args, f, 0)
+        elif f in ("ee", "set"):
+            setattr(args, f, [])
+        elif f == "pre":
+            setattr(args, f, True)
+        elif f == "async_mode":
+            setattr(args, f, False)
+        elif f == "poll_interval":
+            setattr(args, f, 10)
+        elif f == "poll_timeout":
+            setattr(args, f, 600)
+        else:
+            # 字符串类字段：dataset/split/image/cluster/model/api_key/namespace/
+            # cpus/memory/companion/config/user_id/base_url/tasks
+            setattr(args, f, "")
+
+
 def build_rc_cmd(config, split, task_id, experiment_id):
     cmd = [
         "rc", "agent", "run",
@@ -378,8 +471,32 @@ def run_single_task(result_json, experiment_id, log_dir, config, total_tasks, ta
     print(f"[{idx}/{total}] [{tag}]  {task_id}  sandbox={sandbox_id}")
 
 
+def resolve_concurrency(config, total_tasks):
+    """计算滑动窗口的并发上限。
+
+    - window_size 为主：表示全局同时在飞的任务数（滑动窗口大小）。
+      window_size <= 0 表示不限制（= total_tasks，全部一起跑）。
+    - concurrency 为兼容同义词（旧用法）；两者同时给定时取较小值，避免超限。
+    """
+    ws = getattr(config, "window_size", 0) or 0
+    if ws <= 0:
+        cap = total_tasks
+    else:
+        cap = ws
+    cc = getattr(config, "concurrency", None)
+    if cc:  # 兼容旧 --concurrency：同时给定时收紧到较小值
+        cap = min(cap, cc)
+    return max(1, cap)
+
+
 def run_window(result_json, experiment_id, log_dir, config, total_tasks, task_batch, offset, total):
-    with ThreadPoolExecutor(max_workers=config.concurrency) as executor:
+    """滑动窗口并发派发：维持固定并发上限，一个任务完成立刻补充下一个。
+
+    通过 ThreadPoolExecutor(max_workers=N) 实现——线程池天然在任务完成时
+    复用线程调度下一个，无需手动分批 barrier。task_batch 通常就是全部待跑任务。
+    """
+    max_workers = resolve_concurrency(config, len(task_batch))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
             executor.submit(
                 run_single_task, result_json, experiment_id, log_dir,
@@ -445,7 +562,13 @@ def cmd_run(args):
     Path(result_json).parent.mkdir(parents=True, exist_ok=True)
     init_result_json(result_json, experiment_id, args, all_tasks)
 
-    window_desc = f"{args.window_size}" if args.window_size > 0 else "全部"
+    # 配置持久化：自动存 + 显式存
+    save_config(args, f"./configs/{experiment_id}.json")
+    if getattr(args, "save_config", None):
+        save_config(args, args.save_config)
+
+    concurrency_cap = resolve_concurrency(args, total)
+    cap_desc = f"{concurrency_cap}" if concurrency_cap < total else "不限（全部并行）"
     print(LINE)
     print(" 全量回归")
     print(f" Bench:       {args.bench}")
@@ -457,25 +580,15 @@ def cmd_run(args):
     print(f" Cluster:     {args.cluster or '(rockcli 默认)'}")
     print(f" Experiment:  {experiment_id}")
     print(f" 任务总数:    {total}")
-    print(f" 并发数:      {args.concurrency}")
-    print(f" 窗口大小:    {window_desc}")
+    print(f" 并发上限:    {cap_desc}  (滑动窗口：完成一个补一个)")
     print(f" Result:      {result_json}")
     print(f" Logs:        {log_dir}")
     print(LINE)
 
     dispatched_count = 0
 
-    if args.window_size <= 0:
-        run_window(result_json, experiment_id, log_dir, args, total_tasks, tasks, 0, total)
-    else:
-        offset = 0
-        window_idx = 0
-        while offset < total:
-            batch = tasks[offset:offset + args.window_size]
-            window_idx += 1
-            print(f"\n--- 窗口 #{window_idx}: 任务 {offset + 1}-{offset + len(batch)}/{total} ---")
-            run_window(result_json, experiment_id, log_dir, args, total_tasks, batch, offset, total)
-            offset += len(batch)
+    # 滑动窗口：全部任务一次性提交给线程池，由 max_workers 维持并发上限
+    run_window(result_json, experiment_id, log_dir, args, total_tasks, tasks, 0, total)
 
     with open(result_json) as f:
         data = json.load(f)
@@ -1923,33 +2036,31 @@ def cmd_retry(args):
     init_result_json(result_json, experiment_id, args, retry_tasks,
                      extra_fields={"retry_of": orig_experiment_id})
 
+    # 配置持久化：自动存 + 显式存
+    save_config(args, f"./configs/{experiment_id}.json")
+    if getattr(args, "save_config", None):
+        save_config(args, args.save_config)
+
     print(LINE)
     print(" Retry 重跑")
     print(f" 原实验:      {orig_experiment_id}")
     print(f" 新实验:      {experiment_id}")
+    concurrency_cap = resolve_concurrency(args, total)
+    cap_desc = f"{concurrency_cap}" if concurrency_cap < total else "不限（全部并行）"
     print(f" Bench:       {args.bench}")
     print(f" Split:       {split}")
     print(f" Agent:       {args.agent}")
     print(f" Filter:      {args.filter}")
     print(f" 重跑任务:    {total}")
-    print(f" 并发数:      {args.concurrency}")
+    print(f" 并发上限:    {cap_desc}  (滑动窗口：完成一个补一个)")
     print(f" Result:      {result_json}")
     print(f" Logs:        {log_dir}")
     print(LINE)
 
     dispatched_count = 0
 
-    if args.window_size <= 0:
-        run_window(result_json, experiment_id, log_dir, args, total_tasks, retry_tasks, 0, total)
-    else:
-        offset = 0
-        window_idx = 0
-        while offset < total:
-            batch = retry_tasks[offset:offset + args.window_size]
-            window_idx += 1
-            print(f"\n--- 窗口 #{window_idx}: 任务 {offset + 1}-{offset + len(batch)}/{total} ---")
-            run_window(result_json, experiment_id, log_dir, args, total_tasks, batch, offset, total)
-            offset += len(batch)
+    # 滑动窗口：全部任务一次性提交给线程池，由 max_workers 维持并发上限
+    run_window(result_json, experiment_id, log_dir, args, total_tasks, retry_tasks, 0, total)
 
     with open(result_json) as f:
         result_data = json.load(f)
@@ -1985,39 +2096,43 @@ def add_common_args(parser):
 def add_rc_args(parser, include_api_key=False):
     """添加 rc agent run 的全部参数（透传给 rockcli）"""
     rc = parser.add_argument_group("rockcli 参数（透传给 rc agent run）")
-    rc.add_argument("--bench", required=True, help="Bench 模板名称")
-    rc.add_argument("--dataset", default="", help="数据集名称")
-    rc.add_argument("--split", default="", help="数据集 split")
-    rc.add_argument("--agent", required=True, help="Agent 名称")
-    rc.add_argument("--image", default="", help="Docker 镜像")
-    rc.add_argument("--cluster", default="", help="集群标识")
-    rc.add_argument("--model", default="", help="模型名称")
+    rc.add_argument("--bench", default=_UNSET, help="Bench 模板名称")
+    rc.add_argument("--dataset", default=_UNSET, help="数据集名称")
+    rc.add_argument("--split", default=_UNSET, help="数据集 split")
+    rc.add_argument("--agent", default=_UNSET, help="Agent 名称")
+    rc.add_argument("--image", default=_UNSET, help="Docker 镜像")
+    rc.add_argument("--cluster", default=_UNSET, help="集群标识")
+    rc.add_argument("--model", default=_UNSET, help="模型名称")
     if include_api_key:
-        rc.add_argument("--api-key", default="", help="API 密钥")
-    rc.add_argument("--ee", action="append", default=[], help="沙箱环境变量 (KEY=VALUE)，可多次指定")
-    rc.add_argument("--set", action="append", default=[], help="YAML 字段覆盖 (path=value)，可多次指定")
-    rc.add_argument("--pre", action="store_true", default=True, help="使用预发环境（默认启用）")
+        rc.add_argument("--api-key", default=_UNSET, help="API 密钥")
+    rc.add_argument("--ee", action=_AppendUnsetAction, default=_UNSET, help="沙箱环境变量 (KEY=VALUE)，可多次指定")
+    rc.add_argument("--set", action=_AppendUnsetAction, default=_UNSET, help="YAML 字段覆盖 (path=value)，可多次指定")
+    rc.add_argument("--pre", action="store_true", default=_UNSET, help="使用预发环境（默认启用）")
     rc.add_argument("--no-pre", action="store_false", dest="pre", help="使用正式环境")
-    rc.add_argument("--namespace", default="", help="ROCK 项目空间")
-    rc.add_argument("--cpus", default="", help="CPU 规格（Core）")
-    rc.add_argument("--memory", default="", help="内存规格（GiB）")
-    rc.add_argument("--with-companion", dest="companion", default="", help="启用陪跑助手（如 claude-code）")
-    rc.add_argument("--config", default="", help="JobConfig YAML 配置文件路径（Config 模式）")
-    rc.add_argument("--async-mode", action="store_true", help="异步模式：提取 sandbox_id 后退出")
-    rc.add_argument("--user-id", default="", help="用户 ID（工号）")
-    rc.add_argument("--base-url", default="", help="服务端地址")
+    rc.add_argument("--namespace", default=_UNSET, help="ROCK 项目空间")
+    rc.add_argument("--cpus", default=_UNSET, help="CPU 规格（Core）")
+    rc.add_argument("--memory", default=_UNSET, help="内存规格（GiB）")
+    rc.add_argument("--with-companion", dest="companion", default=_UNSET, help="启用陪跑助手（如 claude-code）")
+    rc.add_argument("--config", default=_UNSET, help="JobConfig YAML 配置文件路径（Config 模式）")
+    rc.add_argument("--async-mode", action="store_true", default=_UNSET, help="异步模式：提取 sandbox_id 后退出")
+    rc.add_argument("--user-id", default=_UNSET, help="用户 ID（工号）")
+    rc.add_argument("--base-url", default=_UNSET, help="服务端地址")
 
 
 def add_run_args(parser):
     add_rc_args(parser, include_api_key=True)
 
     ctrl = parser.add_argument_group("调度控制参数")
-    ctrl.add_argument("--concurrency", type=int, required=True, help="最大并发数")
-    ctrl.add_argument("--window-size", type=int, required=True, help="滑动窗口大小（0=一次性全部派发）")
+    ctrl.add_argument("--concurrency", type=int, default=_UNSET, help="（兼容旧参数）并发数；与 --window-size 同时给定时取较小值")
+    ctrl.add_argument("--window-size", type=int, default=_UNSET, help="全局并发上限（滑动窗口：完成一个补一个）；0=不限制")
     ctrl.add_argument("--resume", action="store_true", help="续跑模式")
-    ctrl.add_argument("--tasks", default="", help="手动指定任务列表（逗号分隔）")
-    ctrl.add_argument("--poll-interval", type=int, default=10, help="轮询间隔秒数")
-    ctrl.add_argument("--poll-timeout", type=int, default=600, help="轮询超时秒数")
+    ctrl.add_argument("--tasks", default=_UNSET, help="手动指定任务列表（逗号分隔）")
+    ctrl.add_argument("--poll-interval", type=int, default=_UNSET, help="轮询间隔秒数")
+    ctrl.add_argument("--poll-timeout", type=int, default=_UNSET, help="轮询超时秒数")
+    ctrl.add_argument("--from-config", dest="from_config", default=None,
+                      help="从 JSON 配置文件加载参数（CLI 显式参数覆盖 JSON）")
+    ctrl.add_argument("--save-config", dest="save_config", default=None,
+                      help="额外把本次配置保存到指定 JSON 路径")
 
 
 def parse_args():
@@ -2059,15 +2174,19 @@ def parse_args():
     p_retry = subparsers.add_parser("retry", help="重跑失败任务")
     add_common_args(p_retry)
     add_rc_args(p_retry)
-    p_retry.add_argument("--concurrency", type=int, required=True, help="最大并发数")
-    p_retry.add_argument("--window-size", type=int, required=True, help="滑动窗口大小")
+    p_retry.add_argument("--concurrency", type=int, default=_UNSET, help="（兼容旧参数）并发数；与 --window-size 同时给定时取较小值")
+    p_retry.add_argument("--window-size", type=int, default=_UNSET, help="全局并发上限（滑动窗口：完成一个补一个）；0=不限制")
     p_retry.add_argument("--filter", choices=["error", "dispatched", "all-failed"], default="all-failed",
                          help="重跑范围: error/dispatched/all-failed")
     p_retry.add_argument("--exception-type", help="只重跑特定异常类型")
-    p_retry.add_argument("--tasks", default="", help="手动指定重跑任务列表（逗号分隔）")
+    p_retry.add_argument("--tasks", default=_UNSET, help="手动指定重跑任务列表（逗号分隔）")
     p_retry.add_argument("--same-experiment", action="store_true", help="沿用原实验 ID")
-    p_retry.add_argument("--poll-interval", type=int, default=10, help="轮询间隔秒数")
-    p_retry.add_argument("--poll-timeout", type=int, default=600, help="轮询超时秒数")
+    p_retry.add_argument("--poll-interval", type=int, default=_UNSET, help="轮询间隔秒数")
+    p_retry.add_argument("--poll-timeout", type=int, default=_UNSET, help="轮询超时秒数")
+    p_retry.add_argument("--from-config", dest="from_config", default=None,
+                         help="从 JSON 配置文件加载参数（CLI 显式参数覆盖 JSON）")
+    p_retry.add_argument("--save-config", dest="save_config", default=None,
+                         help="额外把本次配置保存到指定 JSON 路径")
 
     # 向后兼容：无子命令但有 --bench 时走 run
     if len(sys.argv) > 1 and sys.argv[1] not in ("run", "report", "sync", "diagnose", "retry", "-h", "--help"):
@@ -2083,6 +2202,9 @@ def parse_args():
 
 def main():
     args = parse_args()
+    if getattr(args, "from_config", None):
+        apply_config(args, args.from_config)
+    normalize_args(args)
     dispatch = {
         "run": cmd_run,
         "report": cmd_report,
