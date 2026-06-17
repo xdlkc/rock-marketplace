@@ -258,6 +258,26 @@ def _fetch_view_data(experiment_id, job_name, api_key):
         return {}
 
 
+def parse_job_from_log(experiment_id, task_id):
+    """从日志文件 ./logs/<experiment_id>/<task_id>.log 提取 job_name 和 sandbox_id。
+
+    用于 regression.py 中途重启后，从日志回填结果文件中缺失的 job_name，
+    提取不到时返回 (None, None)。
+    """
+    log_path = Path(f"./logs/{experiment_id}/{task_id}.log")
+    if not log_path.exists():
+        return None, None
+    try:
+        content = log_path.read_text(encoding="utf-8")
+    except Exception:
+        return None, None
+    job_match = re.search(r"job_name=([a-zA-Z0-9_-]+)", content)
+    sandbox_match = re.search(r"sandbox_id=([a-f0-9]+)", content)
+    job_name = job_match.group(1) if job_match else None
+    sandbox_id = sandbox_match.group(1) if sandbox_match else None
+    return job_name, sandbox_id
+
+
 def query_and_update_task(result_json, experiment_id, task_id, total_tasks, job_name, sandbox_id, api_key, poll_interval, poll_timeout):
     view_data = {}
     waited = 0
@@ -445,10 +465,10 @@ def run_single_task(result_json, experiment_id, log_dir, config, total_tasks, ta
         exit_code = 1
 
     log_content = log_file.read_text(encoding="utf-8")
-    sandbox_match = re.search(r"sandbox_id=([a-f0-9]+)", log_content)
-    job_match = re.search(r"job_name=([a-zA-Z0-9_-]+)", log_content)
-    sandbox_id = sandbox_match.group(1) if sandbox_match else ""
-    job_name = job_match.group(1) if job_match else ""
+    # 复用 parse_job_from_log 的正则逻辑；此处仍需完整 log_content 用于下方错误行解析
+    job_name_parsed, sandbox_id_parsed = parse_job_from_log(experiment_id, task_id)
+    sandbox_id = sandbox_id_parsed if sandbox_id_parsed else ""
+    job_name = job_name_parsed if job_name_parsed else ""
 
     if job_name:
         query_and_update_task(
@@ -1715,6 +1735,29 @@ def cmd_sync(args):
     api_key = args.api_key
     tasks = data.get("tasks", {})
     total_tasks = data.get("summary", {}).get("total", len(tasks))
+    dry_run = getattr(args, "dry_run", False)
+
+    # 对结果文件中 job_name 缺失的任务，先尝试从日志回填 job_name/sandbox_id。
+    # regression.py 中途重启后，部分任务服务端已派发（日志里有 job_name），
+    # 但结果文件尚未写入，此处回填避免误标为派发失败。
+    recovered = 0
+    for task_id, task in tasks.items():
+        if task.get("job_name"):
+            continue
+        log_job, log_sandbox = parse_job_from_log(experiment_id, task_id)
+        if not log_job:
+            continue
+        recovered += 1
+        task["job_name"] = log_job
+        if log_sandbox and not task.get("sandbox_id"):
+            task["sandbox_id"] = log_sandbox
+        if not dry_run:
+            update_task_result(
+                result_path, task_id, total_tasks, task.get("status", "dispatched"),
+                log_sandbox or "", log_job,
+            )
+    if recovered:
+        print(f"从日志恢复 job_name: {recovered} 个任务")
 
     tasks_to_sync = []
     for task_id, task in tasks.items():
@@ -1739,7 +1782,7 @@ def cmd_sync(args):
         print(f"派发失败: {len(no_job_dispatched)} 个任务 (无 job_name)")
     print()
 
-    if getattr(args, "dry_run", False):
+    if dry_run:
         print("[DRY RUN] 以下任务将被同步:")
         for t in tasks_to_sync:
             print(f"  {t['task_id']}  job={t['job_name']}  status={t['status']}")
