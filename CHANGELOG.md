@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.4.0] - 2026-06-17
+
+### Added
+- **rock-eval**: upgrade agent team pipeline to v2 — 7 roles (Lead / OracleChecker / NopChecker / Runner / Monitor / Diagnostician / Operator), parallel pipeline across 4 phases, Lead enforced as zero-execution coordinator, Operator loop for stop→destroy→retune→rerun cycles
+- **rock-eval**: alignment baseline support — optional pre-run step to collect reference scores (leaderboard/paper/user-provided), config cross-check against official parameters, per-task `baselines/<name>.json` file for Diagnostician gap analysis
+
+### Changed
+- rock-eval: team-orchestration runbook rewritten for v2 (replaces v1 4-role serial design)
+- rock-eval: SKILL.md decision tree updated with v2 pipeline and alignment scenario entries
+- rock-eval: Diagnostician prompt gains alignment mode variant (actual vs expected comparison)
+
 ## [1.3.2] - 2026-06-17
 
 ### Added
