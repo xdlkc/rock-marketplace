@@ -48,15 +48,17 @@ python3 .claude/skills/rock-plugin-release/scripts/check_consistency.py
 
 升版由你（执行 skill 的 agent）根据改动类型**判断并建议**，但**最终版本号由用户确认**——不要擅自 bump。判断规则：
 
+> **本仓库的简化规则（覆盖标准 semver）**：只有 **skill 列表发生增删**（新增 skill 或删除/重命名 skill）才升 `minor`；其余所有改动——skill 内部内容更新（含新增能力、修复）、文档/README/元数据/hooks 调整——一律升 `patch`。除非用户另有指示，不升 `major`。
+
 | 改动类型 | 升级 | 例子 |
 |---------|------|------|
 | **新增 skill** | `minor` | 新增 `rock-eval` |
-| **删除 / 重命名 skill** | `major` | 删除一个 skill 等于破坏已安装用户的依赖 |
-| **更新 skill 内容**（仅增强/修复，不破坏接口） | `patch` 或 `minor` | 修复 bug=patch，新增能力=minor |
-| **只改文档/README/元数据** | `patch` | 调整 description 文案 |
-| **修改 hooks 行为** | 至少 `minor` | hooks 改变会自动影响所有会话，需谨慎 |
+| **删除 / 重命名 skill** | `minor` | skill 列表变化即升 minor |
+| **更新 skill 内容**（增强/修复/新增能力，不增删 skill） | `patch` | skill 内加 runbook、修 bug、加 agent team 编排 |
+| **只改文档/README/元数据** | `patch` | 调整 description 文案、对齐 marketplace.json |
+| **修改 hooks 行为** | `patch` | 除非用户要求更高 |
 
-判断时把握一条原则：**已安装该 plugin 的用户升级后会不会遇到破坏？** 会破坏则 major，新增能力则 minor，仅修复则 patch。判断不清就按"可能破坏"对待，往高升，并明确告诉用户你的理由，请他确认。
+判断时把握一条原则：**skill 列表（`registry.json` 的 `skills[]` 与顶层软链）变没变？** 变了升 minor，没变升 patch。判断不清就按 patch 对待并请用户确认。
 
 升版时**plugin.json 和 registry.json 必须同步**——两处的 `version` 要完全一致。当前仓库曾出现过 `plugin.json=1.0.0` 而 `registry.json=1.1.0` 的不一致（校验脚本正是为抓这类问题而生）。
 
@@ -76,7 +78,7 @@ python3 .claude/skills/rock-plugin-release/scripts/check_consistency.py
 
 1. 删除 `plugins/rock/skills/<skill>/` 目录。
 2. 删除顶层软链 `skills/<skill>`。
-3. `registry.json` 的 `skills` 数组移除该项；同步 version（删除=major）；更新 `updated_at`。
+3. `registry.json` 的 `skills` 数组移除该项；同步 version（删除 skill 列表变化，升 minor）；更新 `updated_at`。
 4. `plugin.json` 同步 version、必要时改 description。
 5. `.claude-plugin/marketplace.json`：若 description 改了，同步内层（必要时外层）description。
 6. `README.md` 移除结构图与表格中的对应行。
@@ -85,7 +87,7 @@ python3 .claude/skills/rock-plugin-release/scripts/check_consistency.py
 ### 更新 skill 内容（修复/增强，不增删）
 
 1. 改 `plugins/rock/skills/<skill>/` 下的文件（软链自动跟上，无需动顶层 `skills/`）。
-2. 判断升 patch 还是 minor，同步 `plugin.json` 与 `registry.json` 的 version；更新 `registry.json` 的 `updated_at`。
+2. 升 patch（skill 列表未变），同步 `plugin.json` 与 `registry.json` 的 version；更新 `registry.json` 的 `updated_at`。
 3. 若 description 实质性变化，同步四处 description：`plugin.json` / `registry.json` / `.claude-plugin/marketplace.json` 内层 / README 表格。
 4. 跑校验脚本。
 

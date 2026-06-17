@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.2] - 2026-06-17
+
+### Added
+- **rock-eval** skill: agent team orchestration for large regressions — coordinate Runner (background run/retry), Reporter (report/sync), and Diagnostician (failure deep-dive) subagents so the main context only holds conclusions, not raw logs/trajectories. Runbook at `references/team-orchestration.md`; design rationale at `docs/superpowers/specs/2026-06-17-rock-eval-agent-team-design.md`
+
+### Changed
+- Align `.claude-plugin/marketplace.json` descriptions with registry/plugin.json (previously stale — missing 评测/反馈 skills)
+
 ## [1.3.1] - 2026-06-17
 
 ### Changed

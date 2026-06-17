@@ -27,6 +27,8 @@ What does the user want to do?
 ├─ Understand why tasks failed ───────→ Section 4: Diagnose
 ├─ Rerun failed tasks ────────────────→ Section 5: Retry
 ├─ Manual rc commands ────────────────→ Read references/rockcli-cheatsheet.md
+├─ Full regression, worried about context bloat
+│   (long run + multi-failure triage) → Read references/team-orchestration.md
 └─ Full SOP / workflow reference ─────→ Read references/sop.md
 ```
 
@@ -62,7 +64,7 @@ python3 regression.py run \
 |-----|---------|
 | `--bench` | Bench template — run `rc agent run --help` for current values |
 | `--agent` | Agent name — run `rc agent run --help` for current values |
-| `--window-size` | **Global concurrency cap** — a sliding window that keeps N tasks in flight at all times: the moment one finishes, the next starts. **must not exceed 10** (shared ROCKCLI quota). `0` = no limit (all tasks in parallel) |
+| `--window-size` | **Global concurrency cap** — a sliding window that keeps N tasks in flight at all times: the moment one finishes, the next starts. Recommended cap is **~10** (shared ROCKCLI quota — higher values risk rate-limiting and impacting other users; the script imposes no hard cap). `0` = no limit (all tasks in parallel) |
 | `--concurrency` | *(compat alias)* same meaning as `--window-size`; if both are given, the smaller value wins |
 
 `--window-size`/`--concurrency` cap how many tasks run at once — there is no batch barrier, so throughput stays at the cap for the whole run. `--dataset` and `--split` are required unless `--tasks` is specified.
@@ -275,6 +277,7 @@ All subcommands accept an optional `experiment` positional argument:
 | `references/sop.md` | User asks for the full SOP, typical workflows, or detailed parameter reference |
 | `references/rockcli-cheatsheet.md` | User needs raw `rc` commands outside of regression.py (manual queries, dataset browsing, sandbox management) |
 | `references/data-formats.md` | User asks about result JSON structure, report data format, task fields, exception types, or wants to parse/script against result files |
+| `references/team-orchestration.md` | Full regression expected to be long with multi-failure triage — coordinate Runner / Reporter / Diagnostician subagents so the main context only holds conclusions, not raw logs/trajectories |
 | `scripts/regression.py` | The main script — run it, don't read it into context (2000+ lines) |
 
 ---
