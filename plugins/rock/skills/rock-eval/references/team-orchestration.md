@@ -19,7 +19,7 @@
 | **OracleChecker** | 后台子 agent | `oracle` 冒烟（少量 tasks），验证评分链（reward ≈ 满分） | 不跑 nop、不做全量 |
 | **NopChecker** | 后台子 agent | `nop` 冒烟（少量 tasks），验证环境/镜像/集群（reward ≈ 0） | 不跑 oracle、不做全量 |
 | **Runner** | 后台子 agent | 全量 `run` / `retry` / `run --resume`，里程碑回报 | 不冒烟、不诊断、不报告 |
-| **Monitor** | 后台子 agent | 定时巡检进度 + `sync` + 最终 HTML 报告生成 | 不跑任务、不诊断 |
+| **Monitor** | 后台子 agent | 用 **Cron 工具每 3 分钟拉起**定时巡检（独立于 Runner 进程）；巡检先 `sync` 拉远端真实进展再 `report`；发现可疑信号时对可疑 job 调用 **rock-agent-debug** 深挖确认实际进展；最终 HTML 报告生成 | 不跑任务、不做根因诊断（深挖只确认"是否假执行"，根因归 Diagnostician） |
 | **Diagnostician** | 子 agent（可多实例） | `diagnose` 全模式（含 `--remote/--trajectory/--artifacts`），原文留己方，只回结论 | 不跑任务、不报告 |
 | **Operator** | 子 agent | 停止任务→销毁沙箱→调参→重启 的闭环执行 | 不诊断、不报告 |
 
@@ -54,7 +54,9 @@ Phase 1.5 (optional): 对齐基线确认
     否 → 跳过，直接进 Phase 2
 
 Phase 2: 全量跑 + 持续巡检（Runner ∥ Monitor 并行）
-  Lead 并行派 Runner + Monitor → Monitor 每 2-3 分钟巡检 → Runner 里程碑回报 → 跑完
+  Lead 并行派 Runner + Monitor → Monitor 用 Cron 每 3 分钟定时巡检（独立于 Runner 进程，
+  run 被 background 化/终端切走仍定时跑；Cron 为 session-only，依赖会话存活，会话关闭则巡检停止）
+  → Runner 里程碑回报 → 跑完
 
 Phase 3: 报告 + 诊断（Diagnostician 可并行 ≤2）
   Monitor sync + HTML 报告 → Lead 派 Diagnostician(s) 并行挖异常组 → 收结论
@@ -73,7 +75,7 @@ Phase 4: Operator 闭环 (loop)
 | OracleChecker | Lead | `评分链OK` / `评分链异常: <一句话>` + experiment_id |
 | NopChecker | Lead | `环境OK` / `环境异常: <一句话>` + experiment_id |
 | Runner | Lead | experiment_id + 状态摘要（成功N/失败M/分发K） |
-| Monitor | Lead | 巡检：进度数字；最终：摘要 + HTML 路径 |
+| Monitor | Lead | 巡检：状态=正常/可疑 + 进度数字（可疑时附 rock-agent-debug 一句话结论——假执行/真在跑）；最终：摘要 + HTML 路径 |
 | Diagnostician | Lead | 根因 + 异常类型 + task 列表 + 是否参数问题 + 建议 |
 | Lead | Operator | 诊断结论 + 原 experiment_id + 建议的参数调整 |
 | Lead | Diagnostician | baseline 文件路径 + experiment_id（alignment 模式时额外传递） |
@@ -147,23 +149,77 @@ retry 版：命令换成 `retry --filter <F> --tasks <LIST 或省略> --exceptio
 ### Monitor（后台）
 
 ```
-你是 rock-eval 的 Monitor。负责定时巡检进度和生成最终报告。
+你是 rock-eval 的 Monitor。负责定时巡检进度（确认 job 是否真的在执行）和生成最终报告。
 
-巡检模式（run 阶段）：
-  每 2-3 分钟执行一次：
-    python3 <regression.py 绝对路径> report <EXP_ID> --format json
-  回我：total / success / error / dispatched + 当前 pass rate（一行数字即可）
+巡检模式（run 阶段，用 Cron 工具每 3 分钟触发一次，session-only）：
+  1. 先 sync 拉远端真实进展：python3 <regression.py 绝对路径> sync <EXP_ID>
+  2. 再汇总：python3 <regression.py 绝对路径> report <EXP_ID> --format json
+     记录本次 total / success / error / dispatched + 当前 pass rate
+  3. 读写巡检状态文件 logs/<EXP_ID>/monitor-state.json：
+     - 读上次快照，算 dispatched 连续不降次数、error 是否持续增长、各 task 首 dispatched 时间
+     - 写本次快照（结构：last_dispatched_count / no_decrease_streak /
+       error_history: [...] / tasks: {<task_id>: {first_dispatched_at}}）
+  4. 判可疑（满足任一即视为 job 实际出问题，不再当"正常执行"）：
+     ① dispatched 数量连续 ≥3 次巡检不下降
+     ② error 数 > 总任务 10% 或连续增长
+     ③ pass rate 远低于预期（对齐场景：低于参考 expected_pass_rate 的 0.7 倍）——
+        仅在存在对齐 baseline（含 summary.expected_pass_rate）时启用；无 baseline（纯探索性 run）时跳过本判据，不计入可疑
+     ④ 某 task 停留 dispatched 超过推理超时 timeout 的 1.5 倍
+        （timeout 取值优先级：对齐 baseline 的 reference_config.sampling.timeout
+        → configs/<EXP_ID>.json 里本次 run 实际推理超时配置 → 都没有时用 --poll-timeout 近似并显式标注"以调度超时代替，判定宽松度不同"。
+        注意：判据④用的是"单 task 推理超时"（即 sampling.timeout，见 references/data-formats.md），
+        **不是** `--poll-timeout`（调度超时），二者概念不同，不得无声混用）
+  5. 若判定可疑 → 对该 job 调用 rock-agent-debug 深挖（确认进展，非根因诊断）：
+     提供 experiment_id + job_name，让其拉 trial 级真实状态（result.json 异常字段 /
+     trajectory / exception.txt / container 状态），确认是"假执行"还是真在跑
+  6. 回我（一行）：状态=正常/可疑 + 当前数字；可疑时附 rock-agent-debug 给出的一句话
 
 最终报告模式（run 结束后）：
   1. 若 run 被中断过，先 sync：python3 <regression.py 绝对路径> sync <EXP_ID>
-  2. 生成 HTML：python3 <regression.py 绝对路径> report <EXP_ID> --format html
-  3. 回我：
+  2. 用 CronDelete 清理巡检 Cron，避免空跑（session-only 在会话关闭时会自动停，
+     但主动清理更干净）
+  3. 生成 HTML：python3 <regression.py 绝对路径> report <EXP_ID> --format html
+  4. 回我：
      - total / success / error / dispatched + pass rate
      - 异常类型 → 计数 的摘要表（Top 组即可）
      - HTML 文件路径
 
 禁止：贴 HTML 全文、任务明细表。
 ```
+
+#### monitor-state.json（巡检运行时产物）
+
+巡检判据①③④需要跨巡检次的历史，`report` 是无状态汇总无法提供，故由巡检 agent 维护
+`logs/<EXP_ID>/monitor-state.json`，每次巡检读上次快照、写本次快照。
+
+结构：
+
+```
+{
+  "last_dispatched_count": <int>,        // 上一次巡检的 dispatched 数
+  "no_decrease_streak": <int>,           // dispatched 连续不降次数（判据①用）
+  "error_history": [<int>, ...],         // 近几次巡检的 error 数序列（判据②用）
+  "tasks": {                             // 各 task 进入 dispatched 的时间（判据④用）
+    "<task_id>": { "first_dispatched_at": "<ISO8601>" }
+  }
+}
+```
+
+说明：这是 **Monitor 的巡检运行时产物**，与 `results/`/`logs/`/`configs/` 同级目录体系一致，
+**不进 `references/data-formats.md` 的结果数据 schema**。`no_decrease_streak ≥ 3`（判据①）、
+error > 总任务 10%（判据②）等阈值为默认值，可在 prompt 内调整。
+
+`no_decrease_streak` 维护算法（判据①"不降"的精确定义，避免 agent 自由发挥）：
+- 初值：新 run 第一次巡检或状态文件不存在时，`no_decrease_streak = 0`，并记录当前 `dispatched` 作为基线写入 `last_dispatched_count`。
+- `dispatched < last_dispatched_count`（下降了）→ `no_decrease_streak` 清零。
+- `dispatched == last_dispatched_count`（相等）→ 保持不变，**不累计**（避免 run 后期稳态被误判为可疑）。
+- `dispatched > last_dispatched_count`（不降反升）→ `no_decrease_streak += 1`。
+- 每次巡检后用本次 `dispatched` 覆盖 `last_dispatched_count`。
+
+`first_dispatched_at` 维护边界（判据④只针对**当前仍处于 dispatched** 的 task）：
+- task **首次**出现 dispatched 状态时，记录 `first_dispatched_at = 当前时间`（ISO8601）。
+- 一旦该 task 状态从 dispatched 跳变到 success/error（无论因 sync 改判还是自然完成），**删除**该 task 的 `first_dispatched_at` 记录。
+- 这样可兜住"task 在两次巡检间被 sync 改判为 error"的情况——那种 task 不再停留 dispatched，由判据②的 error 堆积兜住，不靠判据④。
 
 ### Diagnostician
 
@@ -255,7 +311,7 @@ retry 版：命令换成 `retry --filter <F> --tasks <LIST 或省略> --exceptio
 - [ ] 我有没有拼装命令参数字符串？
 - [ ] Runner 只在里程碑回报，没把 task 日志贴回来？
 - [ ] Diagnostician 回的是结论（根因/异常类型/task列表/是否参数问题/建议），不是原文？
-- [ ] Monitor 巡检频率合理（2-3 分钟），没有抢配额？
+- [ ] Monitor 巡检用 Cron（每 3 分钟，session-only），频率合理没有抢配额，run 结束已 CronDelete？
 - [ ] Operator 低风险操作事后通知了我？
 - [ ] Operator 高风险操作等了我（经用户）确认？
 - [ ] 冒烟异常时走了 Operator，而非直接重跑？

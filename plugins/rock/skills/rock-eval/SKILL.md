@@ -23,7 +23,7 @@ What does the user want to do?
 │
 ├─ Run a new regression ──────────────→ Section 1: Run
 ├─ Check results / get a report ──────→ Section 2: Report
-├─ Tasks stuck in "dispatched" ───────→ Section 3: Sync
+├─ Tasks stuck in "dispatched" ───────→ Section 3: Sync (full regression: Monitor 用 Cron 每 3 分钟定时 sync+判可疑，可疑时调 rock-agent-debug 确认，见 references/team-orchestration.md § Monitor)
 ├─ Understand why tasks failed ───────→ Section 4: Diagnose
 ├─ Rerun failed tasks ────────────────→ Section 5: Retry
 ├─ Manual rc commands ────────────────→ Read references/rockcli-cheatsheet.md
@@ -238,6 +238,21 @@ python3 regression.py sync --force            # re-sync all tasks
 ```
 
 Always run sync before generating a report if the run was interrupted.
+
+### Monitor 巡检机制（长跑时）
+
+在 agent team 全量长跑场景下（见 `references/team-orchestration.md` § Monitor），巡检角色
+用 **Cron 工具每 3 分钟 session-only 定时**做一次完整巡检：
+
+1. `sync` 拉远端真实进展 → 2. `report --format json` 汇总 → 3. 维护
+   `logs/<EXP_ID>/monitor-state.json` → 4. 按 4 条判据（dispatched 连续 ≥3 次不降 / error 堆积 /
+   pass rate 远低于预期 / 单 task 超过推理超时 1.5 倍）判是否"假执行"。
+5. **可疑时才**调用 `rock-agent-debug`（提供 experiment_id + job_name）拉 trial 级真实状态
+   确认实际进展；正常则不调，避免无谓深挖。
+6. run 结束后用 CronDelete 清理该巡检 Cron。
+
+> ⚠️ **Cron 为 session-only**：巡检依赖当前会话存活，会话/终端关闭则定时巡检停止
+> （不会跨会话持久化）。长跑如需跨会话，需用 `durable: true`（默认不开）。
 
 ---
 

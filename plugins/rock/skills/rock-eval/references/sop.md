@@ -243,6 +243,9 @@ python3 regression.py sync --force
 3. 无 job_name 的 dispatched 任务标记为 error
 4. 更新结果 JSON 并打印变更摘要
 
+> 长跑 job 的定时巡检（Cron 每 3 分钟 sync + report + 判可疑，可疑时调 rock-agent-debug 深挖确认）见
+> `SKILL.md` § Monitor 巡检机制 与 `references/team-orchestration.md` § Monitor。本节不展开，只做指向。
+
 ---
 
 ## 4. 排查失败 (`diagnose`)
