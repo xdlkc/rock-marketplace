@@ -21,8 +21,10 @@
 """
 
 import argparse
+import fcntl
 import json
 import math
+import os
 import re
 import time
 import subprocess
@@ -30,6 +32,7 @@ import sys
 import threading
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from glob import glob
 from pathlib import Path
@@ -39,6 +42,11 @@ from pathlib import Path
 json_lock = threading.Lock()
 dispatched_count = 0
 count_lock = threading.Lock()
+
+# 派发新鲜度阈值（秒）：dispatched_at 距当前时间小于该值的任务，
+# 即便 job_name 尚未写回 JSON 也视作"正在派发中"，sync 不判 error，
+# 避免巡检在 rc 子进程写回 job_name 前的窗口期误判把正在跑的任务判死。
+DISPATCH_FRESHNESS_SECONDS = 300
 
 LINE = "=" * 70
 
@@ -78,6 +86,62 @@ SAVE_FIELDS = [
 
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
+
+
+def _atomic_write_json(path, data):
+    """原子写入 JSON：写到同目录临时文件再 os.replace 覆盖，避免读到半截 JSON。
+
+    os.replace 在同一文件系统上是原子的；临时文件用目标文件同目录、
+    同后缀加 .tmp，保证与目标在同一个文件系统上。
+    """
+    path = Path(path)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+@contextmanager
+def _file_lock(path):
+    """跨进程文件锁（fcntl.flock 排他锁），保护 results JSON 的读-改-写。
+
+    锁文件与目标 JSON 同目录、同后缀加 .lock。仅 Unix（darwin/linux）可用。
+    锁层级约定：外层 json_lock（进程内线程安全），内层 _file_lock（跨进程），
+    二者正交，调用方按此顺序嵌套即可。
+    """
+    path = Path(path)
+    lock_path = path.with_suffix(path.suffix + ".lock")
+    with open(lock_path, "w") as lockf:
+        fcntl.flock(lockf.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lockf.fileno(), fcntl.LOCK_UN)
+
+
+def _is_dispatch_fresh(task, now=None, freshness=DISPATCH_FRESHNESS_SECONDS):
+    """判断任务是否处于"刚派发"的新鲜窗口期内（dispatched_at < freshness 秒）。
+
+    取舍：dispatched_at 为空/缺失/格式异常时返回 False（视作"不新鲜"），
+    即仍可能被 sync 判 error。这样可避免异常数据导致任务被无限挂起、永远不被判错。
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+    dispatched_at = task.get("dispatched_at")
+    if not dispatched_at:
+        return False
+    try:
+        ts = datetime.fromisoformat(dispatched_at)
+    except (ValueError, TypeError):
+        return False
+    # 兼容 naive datetime（无时区信息）:当作 UTC 处理
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    return (now - ts).total_seconds() < freshness
 
 
 def resolve_experiment(args):
@@ -187,12 +251,15 @@ def init_result_json(result_json, experiment_id, config, all_tasks, extra_fields
     if extra_fields:
         data.update(extra_fields)
     Path(result_json).parent.mkdir(parents=True, exist_ok=True)
-    with open(result_json, "w") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    # 首次创建通常无并发,但为与其他写点保持一致仍加文件锁,并原子写。
+    with _file_lock(result_json):
+        _atomic_write_json(result_json, data)
 
 
 def update_task_result(result_json, task_id, total_tasks, status, sandbox_id="", job_name="", extra=None):
-    with json_lock:
+    # 锁层级:外层 json_lock(进程内线程安全) + 内层 _file_lock(跨进程排他)。
+    # 读-改-写整段都在跨进程锁内,写回走原子写,杜绝并发读半截 JSON / 互相覆盖。
+    with json_lock, _file_lock(result_json):
         with open(result_json) as f:
             data = json.load(f)
 
@@ -241,8 +308,7 @@ def update_task_result(result_json, task_id, total_tasks, status, sandbox_id="",
         summary["pending"] = total_tasks - summary["dispatched"] - summary["success"] - summary["error"]
         data["summary"] = summary
 
-        with open(result_json, "w") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+        _atomic_write_json(result_json, data)
 
 
 # ─── RC CLI 交互 ───
@@ -610,11 +676,12 @@ def cmd_run(args):
     # 滑动窗口：全部任务一次性提交给线程池，由 max_workers 维持并发上限
     run_window(result_json, experiment_id, log_dir, args, total_tasks, tasks, 0, total)
 
-    with open(result_json) as f:
-        data = json.load(f)
-    data["finished_at"] = now_iso()
-    with open(result_json, "w") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    # 读→改→写:monitor/sync 可能并发访问该文件,整段纳入跨进程文件锁,写走原子写。
+    with _file_lock(result_json):
+        with open(result_json) as f:
+            data = json.load(f)
+        data["finished_at"] = now_iso()
+        _atomic_write_json(result_json, data)
 
     s = data["summary"]
     rewards = [t["reward"] for t in data.get("tasks", {}).values() if t.get("reward") is not None]
@@ -1770,16 +1837,33 @@ def cmd_sync(args):
         elif getattr(args, "force", False):
             tasks_to_sync.append(task)
 
-    no_job_dispatched = [t for t in tasks.values() if t["status"] == "dispatched" and not t.get("job_name")]
+    no_job_dispatched = [
+        t for t in tasks.values()
+        if t["status"] == "dispatched"
+        and not t.get("job_name")
+        and not _is_dispatch_fresh(t)  # 刚派发(<300s)的任务跳过,避免误判正在派发中的任务
+    ]
+    # 被新鲜度守卫跳过、暂时保持 dispatched 的任务数（仅用于提示）
+    fresh_skipped = sum(
+        1 for t in tasks.values()
+        if t["status"] == "dispatched"
+        and not t.get("job_name")
+        and _is_dispatch_fresh(t)
+    )
 
     if not tasks_to_sync and not no_job_dispatched:
-        print("所有任务状态已是最新，无需同步。")
+        if fresh_skipped:
+            print(f"所有任务状态已是最新，无需同步。(跳过 {fresh_skipped} 个刚派发(<300s)的任务)")
+        else:
+            print("所有任务状态已是最新，无需同步。")
         return
 
     print(f"实验: {experiment_id}")
     print(f"需要同步: {len(tasks_to_sync)} 个任务 (有 job_name)")
     if no_job_dispatched:
         print(f"派发失败: {len(no_job_dispatched)} 个任务 (无 job_name)")
+    if fresh_skipped:
+        print(f"跳过 {fresh_skipped} 个刚派发(<300s)的任务")
     print()
 
     if dry_run:
@@ -2105,11 +2189,12 @@ def cmd_retry(args):
     # 滑动窗口：全部任务一次性提交给线程池，由 max_workers 维持并发上限
     run_window(result_json, experiment_id, log_dir, args, total_tasks, retry_tasks, 0, total)
 
-    with open(result_json) as f:
-        result_data = json.load(f)
-    result_data["finished_at"] = now_iso()
-    with open(result_json, "w") as f:
-        json.dump(result_data, f, indent=2, ensure_ascii=False)
+    # 读→改→写:retry 时 monitor/sync 可能并发,整段纳入跨进程文件锁,写走原子写。
+    with _file_lock(result_json):
+        with open(result_json) as f:
+            result_data = json.load(f)
+        result_data["finished_at"] = now_iso()
+        _atomic_write_json(result_json, result_data)
 
     s = result_data["summary"]
     rewards = [t["reward"] for t in result_data.get("tasks", {}).values() if t.get("reward") is not None]
