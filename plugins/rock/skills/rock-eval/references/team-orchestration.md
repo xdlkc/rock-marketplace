@@ -292,10 +292,13 @@ error > 总任务 10%（判据②）等阈值为默认值，可在 prompt 内调
      - 高风险（换 image/cluster/model/agent/namespace）→ 向 Lead 汇报建议，等确认
   2. 停止当前实验的未完成任务（如有）：
      rc agent view -e <EXP_ID> 查看在跑任务 → 逐个 rc sandbox destroy <SANDBOX_ID>
-  3. 销毁相关沙箱：
+  3. 批量停止该实验下所有沙箱（一次性覆盖 RUNNING/PENDING，含未记录在 results JSON 里的）：
+     rc expr <EXP_ID> sandboxes stop -y --concurrency 10
+     （高风险变更可先 --dry-run 预览影响范围，再报 Lead 确认）
+  4. 销毁相关沙箱：
      从 results JSON 中提取 sandbox_id → rc sandbox destroy <SANDBOX_ID>
-  4. 构造新参数配置（基于原配置 + 诊断建议的调整）
-  5. 通知 Lead 新配置和新 experiment 准备就绪
+  5. 构造新参数配置（基于原配置 + 诊断建议的调整）
+  6. 通知 Lead 新配置和新 experiment 准备就绪
 
 回我格式：
   低风险：已执行: <调整内容>, 新配置已就绪, 请派 Runner 重跑
