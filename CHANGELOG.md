@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.1] - 2026-06-17
+
+### Changed
+- rock-eval: clarify that `regression.py` must be run in place via its absolute path — no longer copied into the user's working directory; also clarifies that output (`results/`/`logs/`/`configs/`) is written relative to the invocation directory
+
 ## [1.3.0] - 2026-06-17
 
 ### Added

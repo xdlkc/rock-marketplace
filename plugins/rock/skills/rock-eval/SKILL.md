@@ -38,7 +38,7 @@ run  ──→  report  ──→  sync (if needed)  ──→  diagnose  ──
  └─────────────────────────────────────────────────────────────┘
 ```
 
-The script lives at `scripts/regression.py` relative to this skill's directory. Before first use, either copy it to the user's working directory or run it via absolute path.
+The script lives at `scripts/regression.py` relative to this skill's directory. **Run it in place via its absolute path — do not copy it into the user's working directory.** Throughout the commands below, substitute the full path to this skill's `scripts/regression.py`. Output (`results/`, `logs/`, `configs/`) is written relative to wherever you invoke it (typically the user's working directory), so run the commands from the directory where you want results to land.
 
 ---
 
