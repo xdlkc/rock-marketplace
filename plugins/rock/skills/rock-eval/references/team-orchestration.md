@@ -46,11 +46,19 @@ Lead 唯一允许的动作：起 agent、发消息、收结论、向用户确认
 Phase 1: 确认 + 冒烟（OracleChecker ∥ NopChecker 并行）
   Lead 确认参数 → 并行派 OracleChecker + NopChecker → 汇总 → 异常走 Operator
 
+Phase 1.5 (optional): 对齐基线确认
+  Lead 询问是否对齐分数场景 →
+    是 → 获取参考分数（用户提供 / 检索 leaderboard+paper）
+       → 配置交叉检查（标出 reference_config vs 本次 config 差异）
+       → 创建 baselines/<name>.json
+    否 → 跳过，直接进 Phase 2
+
 Phase 2: 全量跑 + 持续巡检（Runner ∥ Monitor 并行）
   Lead 并行派 Runner + Monitor → Monitor 每 2-3 分钟巡检 → Runner 里程碑回报 → 跑完
 
 Phase 3: 报告 + 诊断（Diagnostician 可并行 ≤2）
   Monitor sync + HTML 报告 → Lead 派 Diagnostician(s) 并行挖异常组 → 收结论
+  [alignment 模式] Lead 额外派 Diagnostician 做 baseline 对比（actual vs expected）
 
 Phase 4: Operator 闭环 (loop)
   诊断出参数问题 → Operator 停止/销毁/调参 → 派 Runner 重跑 → 回到 Phase 2
@@ -68,6 +76,7 @@ Phase 4: Operator 闭环 (loop)
 | Monitor | Lead | 巡检：进度数字；最终：摘要 + HTML 路径 |
 | Diagnostician | Lead | 根因 + 异常类型 + task 列表 + 是否参数问题 + 建议 |
 | Lead | Operator | 诊断结论 + 原 experiment_id + 建议的参数调整 |
+| Lead | Diagnostician | baseline 文件路径 + experiment_id（alignment 模式时额外传递） |
 | Operator | Lead | 低风险：`已执行: <内容>`；高风险：`建议: <内容>, 请确认` |
 | Operator | Runner | 调参后的新配置，派重跑 |
 
@@ -175,6 +184,38 @@ retry 版：命令换成 `retry --filter <F> --tasks <LIST 或省略> --exceptio
        建议: <具体建议>
   3. 挖到根因可定论即止，不展开挖所有失败任务。
   4. 若挖不出根因，如实回"证据不足，建议挖 <另一个 task id>"。
+```
+
+### Diagnostician（alignment 对比模式）
+
+> 当存在 `baselines/` 文件时，Lead 使用此变体 prompt 代替或追加标准版。
+
+```
+你是 rock-eval 的 Diagnostician（alignment 模式）。对比 experiment <EXP_ID> 的实际结果与对齐基线。
+
+对齐基线文件：<BASELINE_PATH>
+实际结果文件：results/<EXP_ID>.json
+实际配置文件：configs/<EXP_ID>.json
+
+执行：
+  1. 读取基线文件的 tasks 字段和 reference_config
+  2. 读取实际结果的 tasks 字段
+  3. 逐 task 对比 actual reward vs expected reward（跳过 expected_reward 为 null 的 task）
+  4. 配置对比：比较 reference_config vs configs/<EXP_ID>.json，标出差异项
+  5. 若有 reward gap > 0.1 的 task，选取代表性 task 做深入诊断：
+     python3 <regression.py 绝对路径> diagnose <EXP_ID> --task <TASK_ID> --remote --trajectory
+
+回我（只给结论）：
+  配置差异: <列出 reference_config 与实际 config 的不同字段>
+  分数对齐度: actual_pass_rate=X vs expected_pass_rate=Y, delta=Z
+  gap 分布: 符合预期 N 个 / 低于预期 M 个 / 高于预期 K 个
+  Top gap tasks: <列出 gap 最大的 3-5 个 task id + actual vs expected>
+  根因假设: <一句话>
+  建议: <具体建议>
+
+铁律（违反即失败）：
+  1. trajectory / 远端日志原文留在你自己的上下文，绝不贴回给我。
+  2. 只回上述结论格式。
 ```
 
 ### Operator

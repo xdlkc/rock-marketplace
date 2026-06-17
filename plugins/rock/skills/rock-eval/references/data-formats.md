@@ -210,3 +210,89 @@ print(f\"Pass rate: {s['success']/s['total']*100:.1f}%\")
 python3 regression.py report --format json | \
   python3 -c "import json,sys; d=json.load(sys.stdin); print('\n'.join(t['task_id'] for t in d['tasks'] if t['status']=='error'))"
 ```
+
+---
+
+## 对齐基线文件 (`baselines/<benchmark-name>-<identifier>.json`)
+
+手动创建（由 agent 根据用户提供的参考分数或 leaderboard 数据整理），用于「对齐分数」
+场景。Diagnostician 对比实际结果与此文件来定位 score gap。
+
+文件存放在用户工作目录下的 `baselines/` 子目录（与 `results/`/`logs/`/`configs/` 同级）。
+
+```jsonc
+{
+  // ─── 来源信息 ───
+  "meta": {
+    "created_at": "2026-06-17T10:00:00+08:00",
+    "source": "leaderboard",           // leaderboard | paper | user-provided | internal-history
+    "source_url": "https://...",        // 来源 URL（可选）
+    "source_description": "Official leaderboard as of 2026-06-15",
+    "notes": ""                         // 自由备注
+  },
+
+  // ─── 参考配置（官方/paper 使用的配置）───
+  "reference_config": {
+    "bench": "harborframework/java100",
+    "dataset": "aone-bench/java100",
+    "split": "test",
+    "agent": "claude-code",
+    "model": "claude-sonnet-4-20250514",
+    "image": "rock-registry-vpc...:33180a83",
+    "cluster": "",
+    "ee": [],
+    "set": []
+  },
+
+  // ─── 汇总预期 ───
+  "summary": {
+    "total_tasks": 187,
+    "expected_pass_rate": 0.62,          // 0-1
+    "expected_avg_reward": 0.58          // 0-1（可选）
+  },
+
+  // ─── 逐 task 预期 reward ───
+  "tasks": {
+    "<task_id>": {
+      "expected_reward": 1.0,            // 0-1，null = 未知
+      "notes": ""                        // 可选备注（如 "known flaky"）
+    }
+  }
+}
+```
+
+### 字段说明
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `meta.source` | 是 | 来源类型：`leaderboard` / `paper` / `user-provided` / `internal-history` |
+| `meta.source_url` | 否 | 参考来源 URL |
+| `meta.source_description` | 否 | 来源描述（如"官方 leaderboard 截至 2026-06-15"） |
+| `reference_config` | 是 | 官方/参考使用的完整配置（用于 config drift 对比） |
+| `reference_config.bench` | 是 | 与实际 run 的 bench 必须匹配 |
+| `reference_config.model` | 否 | 空表示未知/未公开 |
+| `summary.total_tasks` | 是 | 参考结果涵盖的任务总数 |
+| `summary.expected_pass_rate` | 是 | 参考 pass rate（0-1 浮点数） |
+| `summary.expected_avg_reward` | 否 | 参考平均 reward |
+| `tasks` | 是 | per-task 预期，至少包含 summary 对应的任务集 |
+| `tasks.<id>.expected_reward` | 是 | `null` 表示该 task 无参考数据 |
+| `tasks.<id>.notes` | 否 | 可选备注（如 "known flaky", "partial credit expected"） |
+
+### 命名约定
+
+文件名格式：`<benchmark-name>-<identifier>.json`
+
+示例：
+- `java100-claude-code-leaderboard-2026Q2.json`
+- `swe-bench-lite-paper-v1.json`
+- `codereview-user-provided.json`
+
+### Diagnostician 使用方式
+
+Diagnostician 在 alignment 模式下：
+1. 读取 `baselines/<file>.json` 的 `tasks` 和 `reference_config`
+2. 读取 `results/<experiment-id>.json` 的 `tasks`
+3. 读取 `configs/<experiment-id>.json`（实际运行配置）
+4. 逐 task 对比 `actual_reward` vs `expected_reward`（跳过 `expected_reward: null` 的 task）
+5. 对比 `reference_config` vs 实际 config，标出 drift 字段
+6. 报告：配置差异 / 分数对齐度 / gap 分布 / top gap tasks / 根因假设 / 建议

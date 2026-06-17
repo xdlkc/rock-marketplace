@@ -110,6 +110,39 @@ versions:
 > dispatch/image/cluster via `nop` (reward ≈ 0). This catches environment problems
 > before they fail the whole batch. See `references/sop.md` for the procedure.
 
+### Alignment baseline — 对齐分数场景（可选步骤）
+
+> 在 oracle/nop 冒烟验证之后、全量 run 之前，**询问用户**：
+> "这次回归的目标是对齐/复现已知分数吗？"
+
+如果用户回答**是**（目标是 reproduce/align 某个已发布的 pass rate）：
+
+1. **获取参考分数**：
+   - 用户直接提供（per-task reward 或 aggregate pass rate）→ 直接使用
+   - 用户提供来源线索（leaderboard URL / paper / 官方网站）→ agent 搜索并提取分数
+   - 两者都无 → 提示用户提供来源，否则跳过对齐步骤
+
+2. **配置交叉检查**：
+   将用户本次 run 的配置（bench / agent / model / image / cluster / 环境变量等）与
+   参考来源使用的配置进行比对。**标出任何不一致**并告知用户——这些差异可能导致分数无法
+   对齐。常见差异点：
+   - model 版本不同
+   - image 版本不同（评分器版本升级可能影响 reward）
+   - split 不同（任务集不同则 pass rate 不可比）
+   - 环境变量差异（API endpoint、超时设置等）
+
+3. **创建对齐基线文件**：
+   将参考分数整理为 task 粒度的 baseline 文件，存放于：
+   ```
+   baselines/<benchmark-name>-<identifier>.json
+   ```
+   格式见 `references/data-formats.md` § 对齐基线文件。
+
+4. **告知用户**：baseline 已创建，后续 Diagnostician 可自动对比实际结果 vs 预期，
+   定位 score gap 的具体 task 和可能原因。
+
+> 如果用户回答**否**（纯探索性回归，无预期分数），跳过此步骤，直接进入全量 run。
+
 ### Pass-through arguments — confirm with the user first
 
 Environment/runtime parameters such as image, cluster, agent, model, and resource
@@ -319,3 +352,17 @@ All subcommands accept an optional `experiment` positional argument:
 ### "How do I see what datasets/agents/benches are available?"
 
 Read `references/rockcli-cheatsheet.md`, then use `rc datasets`, `rc agent bench list`, etc.
+
+### "I want to align/reproduce published scores"（对齐分数场景）
+
+1. 确认对齐目标：哪个 bench/dataset/split，参考来源是什么（leaderboard / paper / 内部历史）
+2. 获取参考分数：从来源提取 per-task reward（或至少 aggregate pass rate）
+3. 配置交叉检查：对比参考配置 vs 本次配置，标出差异（model / image / split / env vars）
+4. 创建 baseline 文件：`baselines/<name>.json`（格式见 `references/data-formats.md` § 对齐基线文件）
+5. Oracle/nop 冒烟验证（同标准流程）
+6. Run `regression.py run` with confirmed parameters
+7. 生成报告 + 派 Diagnostician 做 alignment 对比：
+   - 逐 task 比对 actual vs expected reward
+   - 配置 drift 分析
+   - Top gap tasks + 根因假设
+8. 根据 Diagnostician 结论决定下一步（调参 retry / 接受差异 / 报告给用户）
