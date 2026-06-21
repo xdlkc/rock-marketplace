@@ -62,8 +62,7 @@
         "window_size": {
           "type": "integer",
           "minimum": 1,
-          "default": 10,
-          "description": "Global concurrency cap for the full run. Recommended ~10 to respect shared ROCKCLI quota. Smoke runs override this to 2 internally."
+          "description": "Global concurrency cap for the full run. The appropriate value depends on actual resource/quota conditions — confirm with the user before dispatching. Smoke runs override this to 2 internally."
         },
         "pass_through": {
           "type": "object",
