@@ -73,7 +73,7 @@ python3 regression.py run \
 |-----|---------|
 | `--bench` | Bench template — run `rc agent run --help` for current values |
 | `--agent` | Agent name — run `rc agent run --help` for current values |
-| `--window-size` | **Global concurrency cap** — a sliding window that keeps N tasks in flight at all times: the moment one finishes, the next starts. Recommended cap is **~10** (shared ROCKCLI quota — higher values risk rate-limiting and impacting other users; the script imposes no hard cap). `0` = no limit (all tasks in parallel) |
+| `--window-size` | **Global concurrency cap** — a sliding window that keeps N tasks in flight at all times: the moment one finishes, the next starts. The appropriate value depends on actual resource/quota conditions — **confirm with the user before dispatching** (higher values risk rate-limiting and impacting other users; the script imposes no hard cap). `0` = no limit (all tasks in parallel) |
 | `--concurrency` | *(compat alias)* same meaning as `--window-size`; if both are given, the smaller value wins |
 
 `--window-size`/`--concurrency` cap how many tasks run at once — there is no batch barrier, so throughput stays at the cap for the whole run. `--dataset` and `--split` are required unless `--tasks` is specified.

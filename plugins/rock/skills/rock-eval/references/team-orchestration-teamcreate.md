@@ -145,7 +145,7 @@ task-8: 诊断异常组 A  (diagnostician)          task-9: 诊断异常组 B  (
 
 1. 与用户对话，确认以下内容（不要替用户做主）：
    - bench / dataset / split / agent（用 `rc agent run --help` 实时查可用值，不要硬编码）
-   - `--window-size`（默认建议 10，遵守共享配额）
+   - `--window-size`（取决于实际资源/配额情况，派发前须与用户确认）
    - pass-through 参数：image / cluster / model / namespace / cpus / memory / ee / set /
      config / pre/no-pre / async-mode / user-id / base-url / api-key 等。**只传用户明确指定的**
    - 是否冒烟（默认建议冒烟；用户明确拒绝才设 `smoke=false`）
@@ -305,7 +305,7 @@ task-8: 诊断异常组 A  (diagnostician)          task-9: 诊断异常组 B  (
   dataset: <DATASET>
   split: <SPLIT>
   agent: <AGENT>   // 注意是真实 agent，不是 oracle/nop
-  window_size: <N>  // 通常 10，遵守共享配额
+  window_size: <N>  // 取决于实际资源/配额情况，派发前须与用户确认
   pass_through: <对象，原样转发到 --flag value>
 
 【执行】
