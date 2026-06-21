@@ -338,7 +338,7 @@ def parse_job_from_log(experiment_id, task_id):
     except Exception:
         return None, None
     job_match = re.search(r"job_name=([a-zA-Z0-9_-]+)", content) or re.search(r"│\s+Job\s+([a-zA-Z0-9_-]+)", content)
-    sandbox_match = re.search(r"sandbox_id=([a-f0-9]+)", content)
+    sandbox_match = re.search(r"sandbox_id=([a-f0-9]+)", content) or re.search(r"Sandbox ID[:\s]+([a-f0-9]{32,})", content)
     job_name = job_match.group(1) if job_match else None
     sandbox_id = sandbox_match.group(1) if sandbox_match else None
     return job_name, sandbox_id
@@ -539,7 +539,7 @@ def run_single_task(result_json, experiment_id, log_dir, config, total_tasks, ta
     log_content = log_file.read_text(encoding="utf-8")
     # 从 log_content 直接解析 job_name / sandbox_id（兼容多种 rc 输出格式）
     _jm = re.search(r"job_name=([a-zA-Z0-9_-]+)", log_content) or re.search(r"│\s+Job\s+([a-zA-Z0-9_-]+)", log_content)
-    _sm = re.search(r"sandbox_id=([a-f0-9]+)", log_content)
+    _sm = re.search(r"sandbox_id=([a-f0-9]+)", log_content) or re.search(r"Sandbox ID[:\s]+([a-f0-9]{32,})", log_content)
     sandbox_id = _sm.group(1) if _sm else ""
     job_name = _jm.group(1) if _jm else ""
 
