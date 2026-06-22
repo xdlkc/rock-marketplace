@@ -328,7 +328,12 @@ def compute_summary(job_records):
     mean = sum(sorted_rewards) / n if n else 0
     variance = sum((r - mean) ** 2 for r in sorted_rewards) / n if n > 1 else 0.0
 
+    # score = mean of per-task avg_reward (official "avg of N runs" metric)
+    task_avg_rewards = [j["avg_reward"] for j in scored_jobs]
+    score = sum(task_avg_rewards) / len(task_avg_rewards)
+
     return {
+        "score": round(score, 4),
         "pass_rate": round(n_jobs_pass / len(scored_jobs) * 100, 2),
         "n_jobs_scored": len(scored_jobs),
         "n_jobs_pass": n_jobs_pass,
@@ -366,6 +371,7 @@ def print_text_report(progress, summary, job_records):
 
     print("─── Summary ────────────────────────────────────────────────────")
     print()
+    print(f"  Score:             {summary['score']:.4f}  (mean of per-task avg_reward)")
     print(f"  Pass Rate (job):   {summary['pass_rate']:.1f}%  ({summary['n_jobs_pass']}/{summary['n_jobs_scored']} jobs)")
     print(f"  Pass Rate (trial): {summary['trial_pass_rate']:.1f}%  ({summary['total_trials_scored']} trials)")
     print(f"  Mean Reward:       {summary['mean_reward']:.4f}")
