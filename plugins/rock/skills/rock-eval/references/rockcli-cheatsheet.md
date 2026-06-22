@@ -191,8 +191,11 @@ rc expr <EXPERIMENT_ID> sandboxes --pre --api-key <KEY>
 rc expr <EXPERIMENT_ID> sandboxes \
   --status RUNNING,PENDING,STOPPED --pre --api-key <KEY>
 
-# 批量停止实验下的沙箱（先 dry-run 确认）
+# 批量停止实验下的沙箱
+# ⚠️ 此操作会终止实验下所有沙箱，执行前必须向用户二次确认
+# 先 dry-run 预览影响范围：
 rc expr <EXPERIMENT_ID> sandboxes stop --dry-run --pre --api-key <KEY>
+# 用户确认后执行：
 rc expr <EXPERIMENT_ID> sandboxes stop --pre --api-key <KEY>
 
 # 分页查询（每页 50）

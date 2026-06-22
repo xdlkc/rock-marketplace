@@ -293,8 +293,10 @@ error > 总任务 10%（判据②）等阈值为默认值，可在 prompt 内调
   2. 停止当前实验的未完成任务（如有）：
      rc agent view -e <EXP_ID> 查看在跑任务 → 逐个 rc sandbox destroy <SANDBOX_ID>
   3. 批量停止该实验下所有沙箱（一次性覆盖 RUNNING/PENDING，含未记录在 results JSON 里的）：
-     rc expr <EXP_ID> sandboxes stop -y --concurrency 10
-     （高风险变更可先 --dry-run 预览影响范围，再报 Lead 确认）
+     ⚠️ 执行前必须向用户二次确认：明确告知将停止实验 <EXP_ID> 下的所有沙箱，
+        等用户明确同意后再执行。
+     先 dry-run 预览影响范围：rc expr <EXP_ID> sandboxes stop --dry-run --concurrency 10
+     确认后执行：rc expr <EXP_ID> sandboxes stop -y --concurrency 10
   4. 销毁相关沙箱：
      从 results JSON 中提取 sandbox_id → rc sandbox destroy <SANDBOX_ID>
   5. 构造新参数配置（基于原配置 + 诊断建议的调整）
