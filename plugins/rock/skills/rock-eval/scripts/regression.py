@@ -324,6 +324,51 @@ def _fetch_view_data(experiment_id, job_name, api_key):
         return {}
 
 
+def _fetch_experiment_jobs(experiment_id, api_key):
+    """Fetch all job names from the remote experiment."""
+    try:
+        cmd = ["rc", "agent", "view", "-e", experiment_id, "--pre", "--limit", "1000", "-o", "json"]
+        if api_key:
+            cmd += ["--api-key", api_key]
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        if proc.stdout.strip():
+            data = json.loads(proc.stdout)
+            return data.get("jobs", [])
+    except Exception:
+        pass
+    return []
+
+
+def _discover_task_job_mapping(experiment_id, api_key, job_names, concurrency=10):
+    """Query each job to get its task_name, returning {task_name: job_name} mapping."""
+    mapping = {}
+
+    def query_one(job_name):
+        view_data = _fetch_view_data(experiment_id, job_name, api_key)
+        tasks = view_data.get("tasks", [])
+        if tasks:
+            return tasks[0].get("task_name"), job_name, view_data
+        return None, job_name, view_data
+
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        futures = {executor.submit(query_one, jn): jn for jn in job_names}
+        for future in as_completed(futures):
+            try:
+                task_name, job_name, view_data = future.result()
+                if task_name:
+                    if task_name not in mapping:
+                        mapping[task_name] = (job_name, view_data)
+                    else:
+                        # Keep the newer job (later started_at or finished_at)
+                        existing_finished = mapping[task_name][1].get("finished_at") or ""
+                        new_finished = view_data.get("finished_at") or ""
+                        if new_finished > existing_finished:
+                            mapping[task_name] = (job_name, view_data)
+            except Exception:
+                pass
+    return mapping
+
+
 def parse_job_from_log(experiment_id, task_id):
     """从日志文件 ./logs/<experiment_id>/<task_id>.log 提取 job_name 和 sandbox_id。
 
@@ -337,8 +382,8 @@ def parse_job_from_log(experiment_id, task_id):
         content = log_path.read_text(encoding="utf-8")
     except Exception:
         return None, None
-    job_match = re.search(r"job_name=([a-zA-Z0-9_-]+)", content) or re.search(r"│\s+Job\s+([a-zA-Z0-9_-]+)", content)
-    sandbox_match = re.search(r"sandbox_id=([a-f0-9]+)", content) or re.search(r"Sandbox ID[:\s]+([a-f0-9]{32,})", content)
+    job_match = re.search(r"job_name=([a-zA-Z0-9_-]+)", content)
+    sandbox_match = re.search(r"sandbox_id=([a-f0-9]+)", content)
     job_name = job_match.group(1) if job_match else None
     sandbox_id = sandbox_match.group(1) if sandbox_match else None
     return job_name, sandbox_id
@@ -374,10 +419,31 @@ def extract_task_extra(view_data):
         dur = t.get("avg_duration_ms")
         extra["duration_ms"] = round(dur) if dur else None
 
-    exc = view_data.get("trialDetail", {}).get("trial", {}).get("exception_info") or {}
+    # job-level finished_at indicates the job is done regardless of task aggregation
+    extra["finished_at"] = view_data.get("finished_at")
+
+    trial_detail = view_data.get("trialDetail", {})
+    trial = trial_detail.get("trial", {})
+
+    exc = trial.get("exception_info") or {}
     if exc:
         extra["exception_type"] = exc.get("exception_type")
         extra["exception_message"] = exc.get("exception_message")
+
+    # Fallback: when n_completed/n_errors are both 0 (platform aggregation delay)
+    # but trialDetail has actual results, extract from there
+    if extra.get("n_completed", 0) + extra.get("n_errors", 0) == 0:
+        reward_map = trial_detail.get("reward") or view_data.get("reward")
+        if isinstance(reward_map, dict):
+            for reward_val, trial_names in reward_map.items():
+                if trial_names:
+                    extra["reward"] = float(reward_val)
+                    extra["n_completed"] = 1
+                    break
+        if exc:
+            extra["n_errors"] = 1
+            extra["n_completed"] = 1
+
     return extra
 
 
@@ -470,21 +536,14 @@ def normalize_args(args):
 
 
 def build_rc_cmd(config, split, task_id, experiment_id):
-    cmd = ["rc", "agent", "run"]
-    use_config_mode = bool(getattr(config, "config", ""))
-
-    if use_config_mode:
-        # Config 模式：--config 指定 YAML，--task 覆盖单 task
-        cmd += ["--config", config.config]
-        cmd += ["--task", task_id]
-    else:
-        # Bench 模式：--bench + --agent + --split
-        cmd += ["--bench", config.bench]
-        cmd += ["--split", split]
-        cmd += ["--task", task_id]
-        cmd += ["--agent", config.agent]
-
-    cmd += ["--experiment-id", experiment_id]
+    cmd = [
+        "rc", "agent", "run",
+        "--bench", config.bench,
+        "--split", split,
+        "--task", task_id,
+        "--experiment-id", experiment_id,
+        "--agent", config.agent,
+    ]
     if getattr(config, "pre", True):
         cmd += ["--pre"]
     if config.image:
@@ -503,6 +562,8 @@ def build_rc_cmd(config, split, task_id, experiment_id):
         cmd += ["--memory", config.memory]
     if getattr(config, "companion", ""):
         cmd += ["--with", config.companion]
+    if getattr(config, "config", ""):
+        cmd += ["--config", config.config]
     if getattr(config, "async_mode", False):
         cmd += ["--async"]
     if getattr(config, "user_id", ""):
@@ -529,7 +590,6 @@ def run_single_task(result_json, experiment_id, log_dir, config, total_tasks, ta
     try:
         cmd = build_rc_cmd(config, config.split, task_id, experiment_id)
         with open(log_file, "w", buffering=1, encoding="utf-8") as lf:
-            lf.write(f"[CMD] {' '.join(cmd)}\n")
             proc = subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT)
             exit_code = proc.wait()
     except Exception as e:
@@ -537,11 +597,10 @@ def run_single_task(result_json, experiment_id, log_dir, config, total_tasks, ta
         exit_code = 1
 
     log_content = log_file.read_text(encoding="utf-8")
-    # 从 log_content 直接解析 job_name / sandbox_id（兼容多种 rc 输出格式）
-    _jm = re.search(r"job_name=([a-zA-Z0-9_-]+)", log_content) or re.search(r"│\s+Job\s+([a-zA-Z0-9_-]+)", log_content)
-    _sm = re.search(r"sandbox_id=([a-f0-9]+)", log_content) or re.search(r"Sandbox ID[:\s]+([a-f0-9]{32,})", log_content)
-    sandbox_id = _sm.group(1) if _sm else ""
-    job_name = _jm.group(1) if _jm else ""
+    # 复用 parse_job_from_log 的正则逻辑；此处仍需完整 log_content 用于下方错误行解析
+    job_name_parsed, sandbox_id_parsed = parse_job_from_log(experiment_id, task_id)
+    sandbox_id = sandbox_id_parsed if sandbox_id_parsed else ""
+    job_name = job_name_parsed if job_name_parsed else ""
 
     if job_name:
         query_and_update_task(
@@ -551,25 +610,15 @@ def run_single_task(result_json, experiment_id, log_dir, config, total_tasks, ta
         )
         tag = "OK" if exit_code == 0 else "FAIL"
     else:
-        # job_name 解析失败：直接读 log 判断是否实际完成
-        is_completed = "Job completed" in log_content or "COMPLETED" in log_content
-        if is_completed and exit_code == 0:
-            # 沙箱正常完成但 job_name 解析失败 → 从 log 提取 reward 后标 success
-            _rw = re.search(r"score:\s*([0-9.]+)", log_content)
-            reward = float(_rw.group(1)) if _rw else None
-            extra = {"reward": reward} if reward is not None else {}
-            update_task_result(result_json, task_id, total_tasks, "success", sandbox_id, job_name, extra)
-            tag = "OK"
-        else:
-            err_msg = ""
-            if exit_code != 0:
-                for line in log_content.splitlines():
-                    if re.search(r"error|rate limit|quota", line, re.IGNORECASE):
-                        err_msg = re.sub(r"\x1b\[[0-9;]*m", "", line).strip()
-                        break
-            extra = {"exception_message": err_msg} if err_msg else {}
-            update_task_result(result_json, task_id, total_tasks, "error", sandbox_id, job_name, extra)
-            tag = "FAIL"
+        err_msg = ""
+        if exit_code != 0:
+            for line in log_content.splitlines():
+                if re.search(r"error|rate limit|quota", line, re.IGNORECASE):
+                    err_msg = re.sub(r"\x1b\[[0-9;]*m", "", line).strip()
+                    break
+        extra = {"exception_message": err_msg} if err_msg else {}
+        update_task_result(result_json, task_id, total_tasks, "error", sandbox_id, job_name, extra)
+        tag = "FAIL"
 
     print(f"[{idx}/{total}] [{tag}]  {task_id}  sandbox={sandbox_id}")
 
@@ -629,7 +678,7 @@ def cmd_run(args):
 
     total_tasks = len(all_tasks)
 
-    dataset_short = args.dataset.split("/")[-1] or args.bench or "exp"
+    dataset_short = args.dataset.split("/")[-1]
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     experiment_id = f"{dataset_short}-{ts}"
     result_json = f"./results/{experiment_id}.json"
@@ -1893,6 +1942,7 @@ def cmd_sync(args):
 
     updated = 0
     concurrency = getattr(args, "concurrency", 10)
+    still_running_tasks = []
 
     def sync_one(task):
         view_data = _fetch_view_data(experiment_id, task["job_name"], api_key)
@@ -1906,7 +1956,8 @@ def cmd_sync(args):
                 task_id, view_data = future.result()
                 extra = extract_task_extra(view_data)
                 new_status = "error" if extra.get("n_errors", 0) > 0 else "success"
-                has_result = extra.get("n_completed", 0) + extra.get("n_errors", 0) > 0
+                has_result = (extra.get("n_completed", 0) + extra.get("n_errors", 0) > 0
+                              or extra.get("finished_at"))
                 if has_result:
                     update_task_result(result_path, task_id, total_tasks, new_status,
                                       task.get("sandbox_id", ""), task["job_name"], extra)
@@ -1915,9 +1966,40 @@ def cmd_sync(args):
                     print(f"  [SYNCED] {task_id}  {old_status} -> {new_status}  reward={reward}")
                     updated += 1
                 else:
-                    print(f"  [STILL RUNNING] {task_id}  job={task['job_name']}")
+                    still_running_tasks.append(task)
             except Exception as e:
                 print(f"  [ERROR] {task['task_id']}: {e}")
+
+    # Fallback: for tasks whose job_name was not found on the remote (corrupted by
+    # failed retries), discover the correct job via remote experiment job listing.
+    if still_running_tasks and api_key:
+        print(f"\n  {len(still_running_tasks)} 个任务本地 job 未在远端找到，尝试远端发现...")
+        remote_jobs = _fetch_experiment_jobs(experiment_id, api_key)
+        if remote_jobs:
+            remote_job_names = [j["name"] for j in remote_jobs]
+            task_job_map = _discover_task_job_mapping(experiment_id, api_key, remote_job_names, concurrency)
+            for task in still_running_tasks:
+                task_id = task["task_id"]
+                if task_id in task_job_map:
+                    correct_job, view_data = task_job_map[task_id]
+                    extra = extract_task_extra(view_data)
+                    new_status = "error" if extra.get("n_errors", 0) > 0 else "success"
+                    has_result = (extra.get("n_completed", 0) + extra.get("n_errors", 0) > 0
+                                  or extra.get("finished_at"))
+                    if has_result:
+                        update_task_result(result_path, task_id, total_tasks, new_status,
+                                          task.get("sandbox_id", ""), correct_job, extra)
+                        old_status = task["status"]
+                        reward = extra.get("reward", "?")
+                        print(f"  [DISCOVERED] {task_id}  {old_status} -> {new_status}  reward={reward}  (job={correct_job})")
+                        updated += 1
+                    else:
+                        print(f"  [STILL RUNNING] {task_id}  job={correct_job}")
+                else:
+                    print(f"  [STILL RUNNING] {task_id}  job={task['job_name']}")
+        else:
+            for task in still_running_tasks:
+                print(f"  [STILL RUNNING] {task['task_id']}  job={task['job_name']}")
 
     for t in no_job_dispatched:
         update_task_result(result_path, t["task_id"], total_tasks, "error",
