@@ -315,11 +315,15 @@ def update_task_result(result_json, task_id, total_tasks, status, sandbox_id="",
 
 def _fetch_view_data(experiment_id, job_name, api_key):
     try:
+        import tempfile
         cmd = ["rc", "agent", "view", "-e", experiment_id, "-j", job_name, "--pre", "-o", "json"]
         if api_key:
             cmd += ["--api-key", api_key]
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        return json.loads(proc.stdout) if proc.stdout.strip() else {}
+        with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=True) as tmp:
+            proc = subprocess.run(cmd, stdout=tmp, stderr=subprocess.PIPE, timeout=60)
+            tmp.seek(0)
+            content = tmp.read()
+        return json.loads(content) if content.strip() else {}
     except Exception:
         return {}
 
