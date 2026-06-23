@@ -77,6 +77,7 @@ SAVE_FIELDS = [
     "image", "cluster", "model", "api_key",
     "ee", "set", "pre", "namespace", "cpus", "memory",
     "companion", "config", "async_mode", "user_id", "base_url",
+    "auto_clear",
     "concurrency", "window_size", "tasks",
     "poll_interval", "poll_timeout",
 ]
@@ -570,6 +571,9 @@ def build_rc_cmd(config, split, task_id, experiment_id):
         cmd += ["--user-id", config.user_id]
     if getattr(config, "base_url", ""):
         cmd += ["--base-url", config.base_url]
+    auto_clear = getattr(config, "auto_clear", _UNSET)
+    if auto_clear is not _UNSET and auto_clear is not None:
+        cmd += ["--auto-clear", str(auto_clear)]
     for ee in config.ee:
         cmd += ["--ee", ee]
     for s in getattr(config, "set", []):
@@ -2344,6 +2348,8 @@ def add_rc_args(parser, include_api_key=False):
     rc.add_argument("--async-mode", action="store_true", default=_UNSET, help="异步模式：提取 sandbox_id 后退出")
     rc.add_argument("--user-id", default=_UNSET, help="用户 ID（工号）")
     rc.add_argument("--base-url", default=_UNSET, help="服务端地址")
+    rc.add_argument("--auto-clear", type=int, default=_UNSET,
+                    help="自动清理时间（秒，透传到 rc agent run --auto-clear）")
 
 
 def add_run_args(parser):
