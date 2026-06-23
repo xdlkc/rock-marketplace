@@ -27,6 +27,8 @@ What does the user want to do?
 ├─ Understand why tasks failed ───────→ Section 4: Diagnose
 ├─ Rerun failed tasks ────────────────→ Section 5: Retry
 ├─ Manual rc commands ────────────────→ Read references/rockcli-cheatsheet.md
+├─ Need ROCK Harbor Job config YAML / agent kwargs
+│   → Read references/harbor-config-manual.md
 ├─ Full regression (long run + multi-failure triage)
 │   → Choose orchestration mode:
 │     • TeamCreate (recommended for long runs / cross-session resume):
@@ -334,6 +336,7 @@ All subcommands accept an optional `experiment` positional argument:
 |------|-------------|
 | `references/sop.md` | User asks for the full SOP, typical workflows, or detailed parameter reference |
 | `references/rockcli-cheatsheet.md` | User needs raw `rc` commands outside of regression.py (manual queries, dataset browsing, sandbox management) |
+| `references/harbor-config-manual.md` | User asks how to write ROCK Harbor Job `config.yaml`, `JobConfig` fields, timeout/kwargs semantics, environment kwargs, or per-agent configuration |
 | `references/data-formats.md` | User asks about result JSON structure, report data format, task fields, exception types, or wants to parse/script against result files |
 | `references/team-orchestration.md` | Full regression with 7-role parallel pipeline — **legacy v2 prompt-driven mode** (single-session). Lead / OracleChecker / NopChecker / Runner / Monitor / Diagnostician / Operator. Coordinate subagents so main context only holds conclusions. Includes Operator loop for stop→destroy→retune→rerun cycles |
 | `references/team-orchestration-teamcreate.md` | Full regression — **TeamCreate mode** (recommended for long runs / cross-session resume). Uses CC-native TeamCreate + TaskList state machine + structured output schemas. Currently implements Phase 1-2 (task-1 ~ task-4: config confirm + smoke + decision); Phase 3+ (full run / monitor / diagnose / operator loop) pending |
