@@ -1,6 +1,6 @@
 ---
 name: rock-eval
-description: 使用 rockcli（rc）对 AI Agent 做批量回归评估：在数据集上跑分、生成报告、排查与重试失败用例。当用户要跑 benchmark / regression / agent eval、查看 reward 与通过率，或对一批任务的评估结果做分析时使用。
+description: 使用 rockcli（rc）对 AI Agent 做批量回归评估：在数据集上跑分、生成报告、排查与重试失败用例、深度分析失败原因。当用户要跑 benchmark / regression / agent eval、查看 reward 与通过率、对一批任务的评估结果做分析、深度分析失败原因、做 trajectory 分析或 post-mortem 时使用。
 ---
 
 # Rock Eval — AI Agent Regression Evaluation
@@ -26,6 +26,7 @@ What does the user want to do?
 ├─ Tasks stuck in "dispatched" ───────→ Section 3: Sync (full regression: Monitor 用 Cron 每 3 分钟定时 sync+判可疑，可疑时调 rock-agent-debug 确认，见 references/team-orchestration.md § Monitor)
 ├─ Understand why tasks failed ───────→ Section 4: Diagnose
 ├─ Rerun failed tasks ────────────────→ Section 5: Retry
+├─ 深度分析失败原因 ──────────────────→ Section 6: Analyze（→ references/deep-analysis.md）
 ├─ Manual rc commands ────────────────→ Read references/rockcli-cheatsheet.md
 ├─ Full regression (long run + multi-failure triage)
 │   → Choose orchestration mode:
@@ -318,6 +319,36 @@ merge semantics (JSON base, CLI overrides). See Section 1.
 
 ---
 
+## Section 6: Analyze — 深度失败分析
+
+对已完成实验做系统性 trajectory 分析，逐任务定位失败根因，产出 per-task 分析报告和汇总摘要。
+
+**适用场景**：用户给出实验 ID，想深入了解为什么某些任务失败——不仅是"错了什么"，而是"为什么错"。
+
+**完整指南**：读取 `references/deep-analysis.md`，其中包含三阶段工作流：
+
+| Phase | 做什么 | 输出 |
+|-------|--------|------|
+| 1. 实验概览 | 用 `live-score.py` 获取全量数据 | `overview.json` |
+| 2. 并行深度分析 | 每批 5-8 个子 agent 分析失败 job 的 trajectory | 每个 task 一个 `.md` 分析文件 |
+| 3. 模式聚合 | 汇总失败分类分布 + 改进建议 | `SUMMARY.md` |
+
+**快速启动**：
+
+```bash
+# Phase 1: 获取概览
+python3 scripts/live-score.py -e <EXP_ID> [--pre] --text
+
+# 或使用辅助脚本生成结构化 JSON
+python3 scripts/fetch-overview.py <EXP_ID> [--pre] --output /tmp/bench-analysis-<EXP_ID>/overview.json
+```
+
+然后按 `references/deep-analysis.md` 的 Phase 2/3 执行深度分析和聚合。
+
+**失败分类体系**：见 `references/failure-taxonomy.md`（8 种分类 + 边界判断指南）。
+
+---
+
 ## Experiment ID Resolution
 
 All subcommands accept an optional `experiment` positional argument:
@@ -339,6 +370,8 @@ All subcommands accept an optional `experiment` positional argument:
 | `references/team-orchestration-teamcreate.md` | Full regression — **TeamCreate mode** (recommended for long runs / cross-session resume). Uses CC-native TeamCreate + TaskList state machine + structured output schemas. Currently implements Phase 1-2 (task-1 ~ task-4: config confirm + smoke + decision); Phase 3+ (full run / monitor / diagnose / operator loop) pending |
 | `references/schemas.json` | Structured output schemas for TeamCreate mode — `SmokeOutput` (task-2/task-3), `ConfigConfirmOutput` (task-1), `SmokeDecisionOutput` (task-4). Enforced via Agent tool with schema option. Legacy v2 mode does NOT use these schemas |
 | `scripts/regression.py` | The main script — run it, don't read it into context (2000+ lines) |
+| `references/deep-analysis.md` | 深度失败分析完整指南（三阶段工作流），Section 6 触发时读取 |
+| `references/failure-taxonomy.md` | 8 种失败分类定义、识别方法和边界判断指南，深度分析时参考 |
 
 ---
 
