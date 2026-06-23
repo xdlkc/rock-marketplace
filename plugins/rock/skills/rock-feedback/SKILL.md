@@ -153,6 +153,8 @@ gh pr create \
   --repo xdlkc/rock-marketplace \
   --title "docs(rock-debug): cap default log search output" \
   --body-file <(cat <<'EOF'
+Closes #<ISSUE_NUMBER>
+
 ## 动机
 <这个 PR 解决什么反馈>
 
@@ -166,6 +168,22 @@ EOF
 ```
 
 把 PR 链接给用户。
+
+### 3.5. Issue 自动关闭（必须）
+
+**提 PR 时，必须在 PR body 第一行加上 `Closes #N`**（N 为关联 Issue 的编号）。
+GitHub 在 PR 合入 default branch（main）后自动关闭对应 Issue。
+
+支持的关键词：`Closes #N` / `Fixes #N` / `Resolves #N`，效果相同。
+
+> ⚠️ **只写在 commit message 里不会自动关闭 Issue**——commit message 中的关键词仅在 push 时提醒，不触发自动关闭。
+> 必须写在 **PR body** 中，且只有 PR 被 **合入 default branch** 时才触发。
+
+如果提 PR 时没有对应的 Issue，无需添加。
+如果忘记加了，PR 合入后可以手动关闭：
+```bash
+gh issue close <N> --repo xdlkc/rock-marketplace --comment "Fixed by #<PR_NUMBER>"
+```
 
 ### 4. 无 gh 时回退
 
@@ -189,3 +207,4 @@ https://github.com/xdlkc/rock-marketplace/compare
 - **改动越界**：PR 只改反馈相关内容，避免夹带无关重构。
 - **版本缺失**：bug 类反馈务必带版本号，维护者据此判断是否已修复。
 - **直接 push 到 main**：始终走新分支，不在 main 上直接提交。
+- **PR 忘记写 Closes #N**：PR 合入后关联 Issue 不会自动关闭。PR body 第一行必须有 `Closes #N`（仅 commit message 中的不生效）。
