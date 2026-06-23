@@ -464,7 +464,7 @@ def fetch_task_list(dataset, split, api_key):
     tasks = []
     for line in proc.stdout.splitlines():
         line = line.strip()
-        if re.match(r"^[a-zA-Z][\w-]+$", line) and not line.startswith(("#", "=", "-")):
+        if re.match(r"^[a-zA-Z][\w.-]+$", line) and not line.startswith(("#", "=", "-")):
             tasks.append(line)
     if not tasks:
         print(f"错误: 未从 dataset={dataset} split={split} 获取到任何任务", file=sys.stderr)
