@@ -27,6 +27,7 @@ What does the user want to do?
 ├─ Understand why tasks failed ───────→ Section 4: Diagnose
 ├─ Rerun failed tasks ────────────────→ Section 5: Retry
 ├─ 深度分析失败原因 ──────────────────→ Section 6: Analyze（→ references/deep-analysis.md）
+├─ 在沙箱内执行回归（内网/长跑隔离）──→ Section 7: Sandbox Run
 ├─ Manual rc commands ────────────────→ Read references/rockcli-cheatsheet.md
 ├─ Need ROCK Harbor Job config YAML / agent kwargs
 │   → Read references/harbor-config-manual.md
@@ -348,6 +349,195 @@ python3 scripts/fetch-overview.py <EXP_ID> [--pre] --output /tmp/bench-analysis-
 然后按 `references/deep-analysis.md` 的 Phase 2/3 执行深度分析和聚合。
 
 **失败分类体系**：见 `references/failure-taxonomy.md`（8 种分类 + 边界判断指南）。
+
+---
+
+## Section 7: Sandbox Run — 沙箱内执行回归
+
+将回归脚本提交到 ROCK 沙箱中运行，适用于需要内网环境访问或长时间隔离执行的场景。
+
+### 适用场景
+
+- 回归需要访问内网资源（VPC 内的 API、数据库、私有镜像等）
+- 单次回归耗时较长（数小时甚至过夜），不想占用本地终端
+- 需要更稳定的网络环境（避免本地网络抖动导致任务中断）
+- 希望在受控的资源配额下运行（固定 CPU/内存）
+
+### 前置条件
+
+执行前向用户确认以下信息：
+
+| 项目 | 说明 |
+|------|------|
+| 工号（`--user-id`） | 用于沙箱资源归属，`rc sandbox start` 默认用当前登录账号，通常无需额外传入；如有多账号场景则需确认 |
+| `ROCK_API_KEY` | ROCK 平台凭据 |
+| `ANTHROPIC_API_KEY` | Anthropic 凭据（如使用 Claude agent） |
+| 其他 env var | 询问用户是否有其他需要注入的环境变量 |
+| rockcli 版本 | 是否使用 beta 版（正式版 / beta 版安装脚本不同） |
+| 集群 | 沙箱所用集群，通常为 `vpc-sg-a`（内网场景），可询问用户确认 |
+
+> **`--cluster` 是全局选项**，必须放在 `rc` 之后、子命令之前：
+> `rc --cluster vpc-sg-a sandbox start ...`，**不能**写成 `rc sandbox start --cluster ...`
+
+---
+
+### Step 1 — 启动沙箱
+
+```bash
+rc --cluster vpc-sg-a sandbox start \
+  --auto-clear 86400 \
+  --wait-for-alive \
+  --memory 16g \
+  --cpus 4
+```
+
+> 输出中包含 `SANDBOX_ID`（如 `sb-xxxxxxxx`），后续所有命令均需带上此 ID。
+
+**`sandbox start` 支持的参数（仅这几个，不要传其他参数）：**
+
+| 参数 | 说明 |
+|------|------|
+| `--image` | 沙箱镜像（可选） |
+| `--memory` | 内存配额（如 `16g`） |
+| `--cpus` | CPU 核数（如 `4`） |
+| `--timeout` | 沙箱超时时间（秒） |
+| `--auto-clear` | 自动清理时间（秒），建议设足够长（如 86400 = 24h） |
+| `--wait-for-alive` | 阻塞等待沙箱就绪后再返回 |
+
+---
+
+### Step 2 — 安装 rockcli
+
+```bash
+# 正式版
+rc sandbox <SANDBOX_ID> exec 'bash -c "$(curl -fsSL http://xrl.alibaba-inc.com/install.sh)"'
+
+# beta 版（如用户需要）
+rc sandbox <SANDBOX_ID> exec 'bash -c "$(curl -fsSL http://xrl.alibaba-inc.com/install_beta.sh)"'
+
+# 验证安装
+rc sandbox <SANDBOX_ID> exec 'rc version'
+```
+
+---
+
+### Step 3 — 注入凭据
+
+> ⚠️ **沙箱不支持 `-e` 传入环境变量**，必须通过 `exec` 写入 `~/.bashrc`。
+
+```bash
+rc sandbox <SANDBOX_ID> exec 'echo "export ROCK_API_KEY=<KEY>" >> ~/.bashrc'
+rc sandbox <SANDBOX_ID> exec 'echo "export ANTHROPIC_API_KEY=<KEY>" >> ~/.bashrc'
+
+# 如有其他 env var，同样方式追加
+# rc sandbox <SANDBOX_ID> exec 'echo "export OTHER_KEY=<VALUE>" >> ~/.bashrc'
+
+# 验证凭据生效
+rc sandbox <SANDBOX_ID> exec 'source ~/.bashrc && rc agent bench list --pre'
+```
+
+---
+
+### Step 4 — 确认回归配置（复用 Section 1 逻辑）
+
+在本机侧按照 Section 1 的流程确认回归参数（bench / dataset / split / agent / concurrency 等），并生成 `--from-config` 所需的配置文件（`--save-config ./my-config.json`）。
+
+> 沙箱内使用 `--from-config` 加载配置，可避免命令行过长或在 exec 中转义复杂参数。
+
+---
+
+### Step 5 — 创建目录并上传文件
+
+```bash
+# 创建工作目录结构
+rc sandbox <SANDBOX_ID> exec 'mkdir -p /workspace/scripts /workspace/results /workspace/logs /workspace/configs'
+
+# 上传脚本目录（递归）
+rc sandbox <SANDBOX_ID> upload --dir <local-scripts-dir> --target-path /workspace/scripts --recursive
+
+# 上传回归配置文件
+rc sandbox <SANDBOX_ID> upload --file ./my-config.json --target-path /workspace/my-config.json
+```
+
+> `<local-scripts-dir>` 是本机 `regression.py` 所在的 `scripts/` 目录（此 skill 的绝对路径）。
+
+---
+
+### Step 6 — 后台启动回归
+
+> ⚠️ **必须用 `nohup ... &` 后台化**，否则 `exec` 超时断连后回归进程会被杀死。
+
+```bash
+rc sandbox <SANDBOX_ID> exec 'source ~/.bashrc && cd /workspace && nohup python3 scripts/regression.py run --from-config /workspace/my-config.json --window-size 10 > /workspace/logs/regression.out 2>&1 &'
+```
+
+如需覆盖配置文件中的部分参数，在 `--from-config` 后追加 CLI 参数（CLI 优先级更高）：
+
+```bash
+rc sandbox <SANDBOX_ID> exec 'source ~/.bashrc && cd /workspace && nohup python3 scripts/regression.py run --from-config /workspace/my-config.json --window-size 5 --concurrency 5 > /workspace/logs/regression.out 2>&1 &'
+```
+
+---
+
+### Step 7 — 监控进度
+
+```bash
+# 查看最新日志（最后 50 行）
+rc sandbox <SANDBOX_ID> exec 'tail -50 /workspace/logs/regression.out'
+
+# 查看沙箱命令日志
+rc sandbox <SANDBOX_ID> log search --log-file command.log -m 30
+
+# 查看回归进程是否存活
+rc sandbox <SANDBOX_ID> exec 'pgrep -a python3'
+```
+
+若需要长跑巡检，参考 Section 3 中的 Monitor 机制：在沙箱内定期执行 `sync` + `report`，输出写到 `/workspace/logs/` 后再下载分析。
+
+---
+
+### Step 8 — 取回结果
+
+回归完成后，将结果文件下载到本机：
+
+```bash
+# 下载结果 JSON（EXP_ID 可从日志输出中获取）
+rc sandbox <SANDBOX_ID> download --file /workspace/results/<EXP_ID>.json
+
+# 下载配置快照
+rc sandbox <SANDBOX_ID> download --file /workspace/configs/<EXP_ID>.json
+
+# 在本机生成报告（使用 Section 2 的 report 命令）
+python3 regression.py report /path/to/<EXP_ID>.json
+```
+
+如果不确定 EXP_ID，可先列出结果目录：
+
+```bash
+rc sandbox <SANDBOX_ID> exec 'ls /workspace/results/'
+```
+
+---
+
+### Step 9 — 停止并清理沙箱
+
+```bash
+rc sandbox <SANDBOX_ID> stop
+```
+
+> `--auto-clear` 会在指定时间后自动清理，但提前手动 stop 可立即释放资源，**stop 之后文件将无法下载**，务必先完成 Step 8。
+
+---
+
+### 注意事项与常见陷阱
+
+| 陷阱 | 说明 |
+|------|------|
+| `--cluster` 位置错误 | 必须是 `rc --cluster vpc-sg-a sandbox ...`，不能放在子命令后面 |
+| 不加 `nohup &` | exec 连接超时断开后，回归进程会随之终止 |
+| 凭据未 `source ~/.bashrc` | `exec` 每次是新的 shell，必须在命令前加 `source ~/.bashrc &&` 才能读到写入的 env var |
+| stop 前未下载结果 | 沙箱停止后文件不可访问，先 download 再 stop |
+| `sandbox start` 参数传错 | `--env`/`-e` 等不是 `sandbox start` 的合法参数，会报错；只允许 `--image`/`--memory`/`--cpus`/`--timeout`/`--auto-clear`/`--wait-for-alive` |
 
 ---
 

@@ -130,6 +130,21 @@ rc agent fs download <TRIAL>/agent/trajectory.json \
 - Status: <status>
 - Trials: <n_trials> 总 / <n_errors> 错误
 
+### 快速查看命令
+```bash
+# 查看 job 概览
+rc agent view -e <EXP_ID> -j <job_name> [--pre]
+
+# 查看 trajectory
+rc agent view -e <EXP_ID> -j <job_name> [--pre] --trajectory
+
+# 列出所有 trial 文件
+rc agent fs ls -e <EXP_ID> -j <job_name> [--pre]
+
+# 查看指定 trial 的 result.json
+rc agent fs cat <trial_name>/result.json -e <EXP_ID> -j <job_name> [--pre]
+```
+
 ## 任务目标
 <从 trajectory 第一个 user 消息提取，或从 task 描述字段提取>
 
