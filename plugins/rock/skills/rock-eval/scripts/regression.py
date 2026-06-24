@@ -540,6 +540,7 @@ def build_rc_cmd(config, split, task_id, experiment_id):
     cmd = [
         "rc", "agent", "run",
         "--bench", config.bench,
+        "--dataset", getattr(config, "dataset", ""),
         "--split", split,
         "--task", task_id,
         "--experiment-id", experiment_id,
