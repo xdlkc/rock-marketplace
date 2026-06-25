@@ -413,10 +413,14 @@ def build_rc_cmd(config, split, task_id, experiment_id):
     auto_clear = getattr(config, "auto_clear", _UNSET)
     if auto_clear is not _UNSET and auto_clear is not None and auto_clear != "":
         cmd += ["--auto-clear", str(auto_clear)]
-    for ee in config.ee:
-        cmd += ["--ee", ee]
-    for s in getattr(config, "set", []):
-        cmd += ["--set", s]
+    ee_val = getattr(config, "ee", [])
+    if ee_val is not _UNSET and ee_val:
+        for ee in ee_val:
+            cmd += ["--ee", ee]
+    set_val = getattr(config, "set", [])
+    if set_val is not _UNSET and set_val:
+        for s in set_val:
+            cmd += ["--set", s]
     return cmd
 
 
