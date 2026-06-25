@@ -359,7 +359,34 @@ python3 regression.py run --resume --bench aone-bench --dataset alibaba/aone-ben
   --split delivery_0609-cn --agent claude-code --concurrency 10 --window-size 0
 ```
 
-### 场景 C：失败排查 + 定向重跑
+### 场景 C：zb-a 控制沙箱长跑 rock bench
+
+适用于本机不适合长时间挂进程、需要在 ROCK 沙箱内持续分发/监控回归的场景。
+详细步骤以 `SKILL.md` Section 7 为准，这里只给最小骨架：
+
+```bash
+# 1. 起控制沙箱：用户说 zb-a 时不要写成 vpc-zb-a
+rc --cluster zb-a sandbox start --auto-clear 432000 --wait-for-alive --memory 64g --cpus 16
+
+# 2. 安装 rockcli，必要时用 beta 版
+rc sandbox <SANDBOX_ID> exec 'bash -c "$(curl -fsSL http://xrl.alibaba-inc.com/install_beta.sh)"'
+
+# 3. 上传 regression.py / config，并在沙箱内后台启动
+rc sandbox <SANDBOX_ID> exec 'mkdir -p /workspace/scripts /workspace/results /workspace/logs /workspace/configs'
+rc sandbox <SANDBOX_ID> upload --dir <local-scripts-dir> --target-path /workspace/scripts --recursive
+rc sandbox <SANDBOX_ID> upload --file ./my-config.json --target-path /workspace/my-config.json
+rc sandbox <SANDBOX_ID> exec 'bash -lc "source ~/.bashrc; export PATH=/root/.local/bin:/root/.nvm/versions/node/v22.23.1/bin:/usr/local/bin:/usr/bin:/bin:\$PATH; cd /workspace; setsid python3 scripts/regression.py run --from-config /workspace/my-config.json --cluster <JOB_CLUSTER> --window-size 10 > /workspace/logs/regression.out 2>&1 < /dev/null &"'
+
+# 4. 监控控制进程和平台实验
+rc sandbox <SANDBOX_ID> exec 'tail -50 /workspace/logs/regression.out'
+rc sandbox <SANDBOX_ID> exec 'pgrep -af "regression.py run|rc agent run|rockcli agent run"'
+rc agent view --pre -e <EXP_ID> -o json --limit 100
+```
+
+注意：控制沙箱集群和 agent job 集群是两层配置。`rc --cluster zb-a sandbox start`
+只决定控制沙箱在哪；`regression.py run --cluster <JOB_CLUSTER>` 才决定每个评测 job 跑在哪。
+
+### 场景 D：失败排查 + 定向重跑
 
 ```bash
 # 1. 看异常分布
