@@ -3,63 +3,54 @@ name: rock-eval
 description: 使用 rockcli（rc）对 AI Agent 做批量回归评估：在数据集上跑分、生成报告、排查与重试失败用例、深度分析失败原因。当用户要跑 benchmark / regression / agent eval、查看 reward 与通过率、对一批任务的评估结果做分析、深度分析失败原因、做 trajectory 分析或 post-mortem 时使用。
 ---
 
-# Rock Eval — AI Agent Regression Evaluation
+# Rock Eval — AI Agent 回归评估
 
-This skill orchestrates full regression evaluations for AI agents using `rockcli` (CLI tool, alias `rc`) and the `regression.py` script. It covers the complete lifecycle: dispatching tasks, monitoring progress, analyzing results, diagnosing failures, and retrying.
+本 skill 使用 `rockcli`（别名 `rc`）和 `regression.py` 编排完整的回归评估流程，涵盖：分发任务、监控进度、分析结果、诊断失败和重试。
 
-## When to Use
+## 使用场景
 
-- User wants to run agent evaluations / benchmarks / regressions
-- User asks about evaluation results, pass rates, reward scores
-- User wants to troubleshoot failed evaluation tasks
-- User wants to retry specific failed tasks
-- User references `rc`, `rockcli`, `regression.py`, experiment IDs, or result JSON files
-- User asks about benchmark datasets, splits, or task lists
+- 运行 agent 评估 / benchmark / regression
+- 查看评估结果、pass rate、reward 分数
+- 排查或重试失败任务
+- 涉及 `rc`、`rockcli`、`regression.py`、experiment ID 或结果 JSON 文件
 
-## Quick Start Decision Tree
+## 快速决策树
 
 ```
-What does the user want to do?
+用户想做什么？
 │
-├─ Run a new regression ──────────────→ Section 1: Run
-├─ Check results / get a report ──────→ Section 2: Report
-├─ Tasks stuck in "dispatched" ───────→ Section 3: Sync (full regression: Monitor 用 Cron 每 3 分钟定时 sync+判可疑，可疑时调 rock-agent-debug 确认，见 references/team-orchestration.md § Monitor)
-├─ Understand why tasks failed ───────→ Section 4: Diagnose
-├─ Rerun failed tasks ────────────────→ Section 5: Retry
+├─ 跑新的回归评估 ────────────────────→ Section 1: Run
+├─ 查看结果 / 生成报告 ──────────────→ Section 2: Report
+├─ 任务卡在 "dispatched" ────────────→ Section 3: Sync（Monitor: Cron 每 3 分钟 sync+判可疑，可疑时调 rock-agent-debug，见 references/team-orchestration.md § Monitor）
+├─ 了解任务为什么失败 ────────────────→ Section 4: Diagnose
+├─ 重跑失败任务 ──────────────────────→ Section 5: Retry
 ├─ 深度分析失败原因 ──────────────────→ Section 6: Analyze（→ references/deep-analysis.md）
-├─ 在沙箱内执行回归（内网/长跑隔离）──→ Section 7: Sandbox Run
-├─ Manual rc commands ────────────────→ Read references/rockcli-cheatsheet.md
-├─ Need ROCK Harbor Job config YAML / agent kwargs
-│   → Read references/harbor-config-manual.md
-├─ Full regression (long run + multi-failure triage)
-│   → Choose orchestration mode:
-│     • TeamCreate (recommended for long runs / cross-session resume):
-│         Read references/team-orchestration-teamcreate.md
-│         (TaskList state machine + structured output schemas in references/schemas.json)
-│     • Legacy v2 prompt-driven (single-session, quick setup):
-│         Read references/team-orchestration.md (7 角色并行 pipeline)
-│   → Do NOT mix modes in one regression.
-├─ Need to adjust params after failures (stop/destroy/retry loop)
-│   → Read references/team-orchestration.md § Operator (legacy)
-│      or references/team-orchestration-teamcreate.md § task-11 (TeamCreate)
-└─ Full SOP / workflow reference ─────→ Read references/sop.md
+├─ 在沙箱内执行回归 ──────────────────→ Section 7: Sandbox Run
+├─ 手动 rc 命令 ──────────────────────→ 读 references/rockcli-cheatsheet.md
+├─ Harbor Job config YAML / agent kwargs → 读 references/harbor-config-manual.md
+├─ 全量回归（长跑 + 多失败分诊）
+│   → TeamCreate（推荐）: references/team-orchestration-teamcreate.md
+│     （TaskList 状态机 + schemas: references/schemas.json）
+│   → Legacy v2（单 session）: references/team-orchestration.md（7 角色并行 pipeline）
+│   → 不要混用两种模式
+├─ 失败后调参 → references/team-orchestration.md § Operator（legacy）
+│   或 references/team-orchestration-teamcreate.md § task-11（TeamCreate）
+└─ 完整 SOP / 工作流参考 ────────────→ 读 references/sop.md
 ```
 
-## Core Workflow
+## 核心流程
 
 ```
-run  ──→  report  ──→  sync (if needed)  ──→  diagnose  ──→  retry
- ^                                                             │
- └─────────────────────────────────────────────────────────────┘
+run  ──→  report  ──→  sync（如需）──→  diagnose  ──→  retry
+ ^                                                       │
+ └───────────────────────────────────────────────────────┘
 ```
 
-The script lives at `scripts/regression.py` relative to this skill's directory. **Run it in place via its absolute path — do not copy it into the user's working directory.** Throughout the commands below, substitute the full path to this skill's `scripts/regression.py`. Output (`results/`, `logs/`, `configs/`) is written relative to wherever you invoke it (typically the user's working directory), so run the commands from the directory where you want results to land.
+脚本位于本 skill 目录的 `scripts/regression.py`。**通过绝对路径运行，不要复制。** 输出（`results/`、`logs/`、`configs/`）写入调用时的工作目录。
 
 ---
 
-## 1. Run — Dispatch Regression Tasks
-
-Launches all tasks from a dataset against a specified agent, with concurrent execution.
+## 1. Run — 分发回归任务
 
 ```bash
 python3 regression.py run \
@@ -71,549 +62,345 @@ python3 regression.py run \
   --window-size <N>
 ```
 
-### Required arguments
+### 必填参数
 
-| Arg | Purpose |
+| 参数 | 说明 |
 |-----|---------|
-| `--bench` | Bench template — run `rc agent run --help` for current values |
-| `--agent` | Agent name — run `rc agent run --help` for current values |
-| `--window-size` | **Global concurrency cap** — a sliding window that keeps N tasks in flight at all times: the moment one finishes, the next starts. The appropriate value depends on actual resource/quota conditions — **confirm with the user before dispatching** (higher values risk rate-limiting and impacting other users; the script imposes no hard cap). `0` = no limit (all tasks in parallel) |
-| `--concurrency` | *(compat alias)* same meaning as `--window-size`; if both are given, the smaller value wins |
+| `--bench` | Bench 模板 — 执行 `rc agent run --help` 查看当前可用值 |
+| `--agent` | Agent 名称 — 执行 `rc agent run --help` 查看当前可用值 |
+| `--window-size` | **全局并发上限**（滑动窗口，始终保持 N 个任务在执行）。**分发前需与用户确认。** `0` = 无限制 |
+| `--concurrency` | `--window-size` 的别名；两者同时指定时取较小值 |
 
-`--window-size`/`--concurrency` cap how many tasks run at once — there is no batch barrier, so throughput stays at the cap for the whole run. `--dataset` and `--split` are required unless `--tasks` is specified.
+`--dataset` 和 `--split` 为必填，除非指定了 `--tasks`。
 
-### Resolving the task list when the user only gives a bench name
+### 仅有 bench 名称时解析任务列表
 
-If the user provides a bench name but no `--dataset`/`--split`, **do not guess** —
-resolve the dataset from the bench template first:
+用户只提供 bench 名称时：
 
-1. Run `rc agent bench getconfig <BENCH> --raw` and read the `datasets` field. It
-   gives the dataset `name`, `registry.split`, and `task_names`.
-2. Get the task list with `rc datasets <NAME> tasks --split <SPLIT>`, then pass the
-   dataset/split to `regression.py run` (or pass the task list via `--tasks`).
-3. **Fallback** — some benches don't support the `tasks` subcommand (the dataset
-   returns nothing). In that case, use the `task_names` embedded in the template's
-   `--raw` output as the task source. Don't assume; actually inspect the `--raw`
-   output to decide.
+1. `rc agent bench getconfig <BENCH> --raw` → 读取 `datasets` 字段（name、registry.split、task_names）
+2. `rc datasets <NAME> tasks --split <SPLIT>` → 传给 `regression.py run` 或通过 `--tasks` 指定
+3. **兜底**：若 `tasks` 子命令无返回，使用 `--raw` 输出中的 `task_names`
 
-> Harbor-based benches (e.g. `harborframework/*`) always carry `datasets.name` in
-> their template, so step 1-2 works for them reliably. See
-> `references/rockcli-cheatsheet.md` for the exact commands and YAML shape.
+### Agent / bench 取值
 
-### Agent / bench values — query them live, don't hardcode
+**不要硬编码** — 执行 `rc agent run --help` 查看当前支持值。用 `rc agent deps sync benchhub` 刷新 bench 模板。
 
-The set of supported agents and benches changes as rockcli upgrades. **Do not rely
-on a hardcoded list** — run `rc agent run --help` to see the currently supported
-`--agent` and `--bench` values (the "常用取值" section), and use those. Bench
-templates can also be refreshed with `rc agent deps sync benchhub`.
+两个稳定基线：
 
-Two `--agent` values are **stable baselines** whose meaning doesn't change between
-versions:
-
-| Agent | Meaning |
+| Agent | 含义 |
 |-------|---------|
-| `oracle` | Upper-bound baseline — submits the correct answer; validates the scoring/reward chain |
-| `nop` | Lower-bound baseline — does nothing; validates dispatch + image/cluster/sandbox setup |
+| `oracle` | 上界基线 — 提交正确答案；验证评分链路 |
+| `nop` | 下界基线 — 什么都不做；验证分发/镜像/集群 |
 
-> ⚠️ **Before launching any full regression with a real agent, ask the user whether
-> to first run a small `oracle` and/or `nop` smoke check** (a few `--tasks` at low
-> concurrency) to verify the environment — scoring chain via `oracle` (reward ≈ full),
-> dispatch/image/cluster via `nop` (reward ≈ 0). This catches environment problems
-> before they fail the whole batch. See `references/sop.md` for the procedure.
+> ⚠️ **在用真实 agent 跑全量回归之前，询问用户是否先用 `oracle`/`nop` 做冒烟验证**（少量 `--tasks` + 低并发）。流程见 `references/sop.md`。
 
-### Alignment baseline — 对齐分数场景（可选步骤）
+### Alignment baseline（对齐分数场景，可选）
 
-> 在 oracle/nop 冒烟验证之后、全量 run 之前，**询问用户**：
-> "这次回归的目标是对齐/复现已知分数吗？"
+在 oracle/nop 冒烟后、全量 run 前，**询问用户**是否目标是 reproduce/align 已知分数：
 
-如果用户回答**是**（目标是 reproduce/align 某个已发布的 pass rate）：
+**是**：
+1. 获取参考分数（用户提供 / 从 leaderboard/paper 提取）
+2. 配置交叉检查：对比 model / image / split / env vars / 采样推理参数（temperature · top_p · thinking · max_tokens · 推理超时）；标出不一致
+3. 创建 baseline 文件：`baselines/<benchmark-name>-<identifier>.json`（格式见 `references/data-formats.md` § 对齐基线文件）
 
-1. **获取参考分数**：
-   - 用户直接提供（per-task reward 或 aggregate pass rate）→ 直接使用
-   - 用户提供来源线索（leaderboard URL / paper / 官方网站）→ agent 搜索并提取分数
-   - 两者都无 → 提示用户提供来源，否则跳过对齐步骤
+**否**：直接进入全量 run。
 
-2. **配置交叉检查**：
-   将用户本次 run 的配置（bench / agent / model / image / cluster / 环境变量等）与
-   参考来源使用的配置进行比对。**标出任何不一致**并告知用户——这些差异可能导致分数无法
-   对齐。常见差异点：
-   - model 版本不同
-   - image 版本不同（评分器版本升级可能影响 reward）
-   - split 不同（任务集不同则 pass rate 不可比）
-   - 环境变量差异（API endpoint、超时设置等）
-   - 采样/推理配置（temperature / top_p / thinking（含 reasoning 等级） / max_tokens / 推理超时）：参考来源若公开了这些值而本次 run 未对齐，pass rate 不可比；参考来源未公开则标注"采样配置未知，分数可比性受限"
+### 透传参数
 
-3. **创建对齐基线文件**：
-   将参考分数整理为 task 粒度的 baseline 文件，存放于：
-   ```
-   baselines/<benchmark-name>-<identifier>.json
-   ```
-   格式见 `references/data-formats.md` § 对齐基线文件。
+**不要假设默认值**，只传用户指定的参数：`--image`、`--cluster`、`--model`、`--ee KEY=VALUE`、`--set path=value`、`--pre`/`--no-pre`、`--namespace`、`--cpus`、`--memory`、`--with-companion`、`--config`、`--async-mode`、`--user-id`、`--base-url`、`--api-key`
 
-4. **告知用户**：baseline 已创建，后续 Diagnostician 可自动对比实际结果 vs 预期，
-   定位 score gap 的具体 task 和可能原因。
+> `--model` 可选，省略则使用 ROCKCLI 共享 model。
 
-> 如果用户回答**否**（纯探索性回归，无预期分数），跳过此步骤，直接进入全量 run。
+### 控制参数
 
-### Pass-through arguments — confirm with the user first
-
-Environment/runtime parameters such as image, cluster, agent, model, and resource
-specs are **passed through to `rc agent run` exactly as the user specifies**. Do
-**not** assume or inject any default values for these — before dispatching, ask the
-user which ones they want to set, and only pass the flags they provide.
-
-> **`--model` is optional.** If omitted, the run uses the model shared by ROCKCLI —
-> no need to set it unless the user wants a specific model.
-
-Supported pass-through flags: `--image`, `--cluster`, `--model`, `--ee KEY=VALUE`, `--set path=value`, `--pre`/`--no-pre`, `--namespace`, `--cpus`, `--memory`, `--with-companion`, `--config`, `--async-mode`, `--user-id`, `--base-url`, `--api-key`.
-
-### Control arguments
-
-| Arg | Purpose |
+| 参数 | 说明 |
 |-----|---------|
-| `--resume` | Skip tasks already marked success or error |
-| `--tasks t1,t2,...` | Run specific tasks only (dataset/split optional) |
-| `--poll-interval` | Seconds between status checks (default 10) |
-| `--poll-timeout` | Max wait per task in seconds (default 600) |
+| `--resume` | 跳过已标记 success 或 error 的任务 |
+| `--tasks t1,t2,...` | 仅运行指定任务 |
+| `--poll-interval` | 轮询间隔秒数（默认 10） |
+| `--poll-timeout` | 单任务最大等待秒数（默认 600） |
 
-### Configuration persistence (save / reuse run configs)
+### 配置持久化
 
-Every `run` and `retry` **automatically** snapshots the full effective configuration to
-`configs/<experiment-id>.json` (alongside `results/` and `logs/`) so each regression is
-reproducible and traceable. Two flags let you also save to / load from a custom path:
+每次 `run`/`retry` 自动快照配置到 `configs/<experiment-id>.json`。
 
 ```bash
-# Save the current config to a reusable template
-python3 regression.py run --bench <BENCH> --agent <AGENT> ... \
-  --save-config ./my-template.json
+# 保存配置模板
+python3 regression.py run --bench <BENCH> --agent <AGENT> ... --save-config ./my-template.json
 
-# Later, run from that template — CLI flags override the JSON's values
-python3 regression.py run --from-config ./my-template.json \
-  --concurrency 8          # only this overrides the file; rest comes from JSON
+# 从模板运行（CLI 参数覆盖 JSON）
+python3 regression.py run --from-config ./my-template.json --concurrency 8
 ```
 
-| Flag | Behavior |
+| 参数 | 说明 |
 |------|----------|
-| `--save-config <path>` | Additionally save the effective config to `<path>` (template reuse) |
-| `--from-config <path>` | Load `<path>` as the base config; any CLI flag you pass overrides the matching JSON field |
+| `--save-config <path>` | 额外将生效配置保存到 `<path>` |
+| `--from-config <path>` | 加载为基础配置；CLI 参数覆盖 JSON 中的对应字段 |
 
-**Merge semantics:** JSON is the base; CLI flags override. A flag you pass on the command line
-wins; a field you omit is taken from the JSON. (`--bench`/`--agent` are no longer required on the
-CLI when they come from the file.)
+JSON 包含完整参数集（bench/dataset/split/agent/所有透传参数/tasks/concurrency/poll），不含 experiment id（每次重新生成）。注意 `--config`（rc 的 JobConfig YAML）是已有的不同参数。
 
-The JSON contains the full run parameter set (bench/dataset/split/agent, all pass-through
-params, tasks, concurrency/window, poll settings) — **not** the experiment id, which is
-regenerated per run. Note `--config` (rc's JobConfig YAML) is a different, pre-existing flag.
+### 输出
 
-### Output
-
-- Result JSON: `results/<experiment-id>.json`
-- Config snapshot: `configs/<experiment-id>.json`
-- Task logs: `logs/<experiment-id>/<task-id>.log`
+- 结果 JSON：`results/<experiment-id>.json`
+- 配置快照：`configs/<experiment-id>.json`
+- 任务日志：`logs/<experiment-id>/<task-id>.log`
 
 ---
 
-## 2. Report — View Results
+## 2. Report — 查看结果
 
 ```bash
-# Latest experiment, text format
-python3 regression.py report
-
-# Specific experiment
-python3 regression.py report <EXPERIMENT_ID>
-
-# HTML dashboard (auto-open browser)
-python3 regression.py report --format html --open
-
-# JSON for scripting
-python3 regression.py report --format json
+python3 regression.py report                          # 最新实验，文本格式
+python3 regression.py report <EXPERIMENT_ID>          # 指定实验
+python3 regression.py report --format html --open     # HTML 仪表盘
+python3 regression.py report --format json            # JSON 供脚本使用
 ```
 
-The HTML report is self-contained (~54KB), dark theme, with:
-- KPI cards (total/success/error/dispatched + pass rate)
-- Donut chart (status distribution)
-- Reward histogram (only non-zero bins shown)
-- Exception grouping table (deduplicated messages)
-- Interactive task table (search, filter by status, sortable columns)
+HTML 报告包含：KPI 卡片、环形图、reward 直方图、exception 分组表、可交互任务表。
 
 ---
 
-## 3. Sync — Refresh Stale States
-
-When tasks are stuck in "dispatched" (timeout or interruption), sync pulls the latest state from the server.
+## 3. Sync — 刷新过期状态
 
 ```bash
 python3 regression.py sync [EXPERIMENT_ID]
-python3 regression.py sync --dry-run          # preview without writing
-python3 regression.py sync --force            # re-sync all tasks
+python3 regression.py sync --dry-run    # 预览，不写入
+python3 regression.py sync --force      # 重新同步所有任务
 ```
 
-Always run sync before generating a report if the run was interrupted.
+运行被中断后，生成报告前务必先执行 sync。
 
 ### Monitor 巡检机制（长跑时）
 
-在 agent team 全量长跑场景下（见 `references/team-orchestration.md` § Monitor），巡检角色
-用 **Cron 工具每 3 分钟 session-only 定时**做一次完整巡检：
+见 `references/team-orchestration.md` § Monitor。巡检角色用 **Cron 每 3 分钟 session-only** 定时：
 
-1. `sync` 拉远端真实进展 → 2. `report --format json` 汇总 → 3. 维护
-   `logs/<EXP_ID>/monitor-state.json` → 4. 按 4 条判据（dispatched 连续 ≥3 次不降 / error 堆积 /
-   pass rate 远低于预期 / 单 task 超过推理超时 1.5 倍）判是否"假执行"。
-5. **可疑时才**调用 `rock-agent-debug`（提供 experiment_id + job_name）拉 trial 级真实状态
-   确认实际进展；正常则不调，避免无谓深挖。
-6. run 结束后用 CronDelete 清理该巡检 Cron。
+1. `sync` → 2. `report --format json` → 3. 维护 `logs/<EXP_ID>/monitor-state.json` → 4. 按 4 条判据判"假执行"：dispatched 连续 ≥3 次不降 / error 堆积 / pass rate 远低于预期 / 单 task 超推理超时 1.5 倍
+5. **可疑时才**调 `rock-agent-debug`（experiment_id + job_name）确认；正常则不调
+6. run 结束后用 CronDelete 清理 Cron
 
-> ⚠️ **Cron 为 session-only**：巡检依赖当前会话存活，会话/终端关闭则定时巡检停止
-> （不会跨会话持久化）。长跑如需跨会话，需用 `durable: true`（默认不开）。
+> ⚠️ **Cron 为 session-only**，会话关闭则停止。跨会话长跑需用 `durable: true`。
 
 ---
 
-## 4. Diagnose — Failure Triage
-
-### Overview mode — see the big picture
+## 4. Diagnose — 失败分诊
 
 ```bash
+# 概览
 python3 regression.py diagnose [EXPERIMENT_ID]
 python3 regression.py diagnose --status error
 python3 regression.py diagnose --exception RuntimeError
-```
 
-Shows: exception types grouped by count, deduplicated error messages (variable parts normalized), dispatched task list.
-
-### Single-task mode — deep dive
-
-```bash
-python3 regression.py diagnose --task <TASK_ID>                    # metadata + local log
-python3 regression.py diagnose --task <TASK_ID> --remote           # + server logs
-python3 regression.py diagnose --task <TASK_ID> --trajectory       # + execution trace
-python3 regression.py diagnose --task <TASK_ID> --artifacts        # + output files
-python3 regression.py diagnose --task <TASK_ID> --tail 50          # last 50 lines of local log
+# 单任务深入
+python3 regression.py diagnose --task <TASK_ID>
+python3 regression.py diagnose --task <TASK_ID> --remote       # + 服务端日志
+python3 regression.py diagnose --task <TASK_ID> --trajectory   # + 执行轨迹
+python3 regression.py diagnose --task <TASK_ID> --artifacts    # + 输出文件
+python3 regression.py diagnose --task <TASK_ID> --tail 50      # 最后 50 行
 ```
 
 ---
 
-## 5. Retry — Rerun Failed Tasks
-
-Different from `--resume`: retry creates a new experiment and only skips successes.
+## 5. Retry — 重跑失败任务
 
 ```bash
-# Retry all failed (error + dispatched)
 python3 regression.py retry [EXPERIMENT_ID] \
   --bench <BENCH> --agent <AGENT> --concurrency <N> --window-size <N>
 
-# Only error tasks
 python3 regression.py retry --filter error ...
-
-# Only specific exception type
 python3 regression.py retry --filter error --exception-type RewardFileNotFoundError ...
-
-# Specific tasks
 python3 regression.py retry --tasks t1,t2,t3 ...
 ```
 
 | | `run --resume` | `retry` |
 |---|---|---|
-| Skips | success + error | success only |
-| Experiment ID | reuses original | new (with `retry_of` reference) |
-| Filtering | none | by status, exception type, manual list |
+| 跳过 | success + error | 仅 success |
+| Experiment ID | 复用原 ID | 新 ID（带 `retry_of` 引用） |
+| 过滤 | 无 | 按 status、exception type、手动列表 |
 
-`retry` supports the same **configuration persistence** flags as `run` — it auto-saves to
-`configs/<new-experiment-id>.json` and accepts `--save-config` / `--from-config` with identical
-merge semantics (JSON base, CLI overrides). See Section 1.
+`retry` 支持与 `run` 相同的 `--save-config`/`--from-config` 配置持久化（JSON 为基础，CLI 覆盖）。
 
 ---
 
 ## Section 6: Analyze — 深度失败分析
 
-对已完成实验做系统性 trajectory 分析，逐任务定位失败根因，产出 per-task 分析报告和汇总摘要。
-
-**适用场景**：用户给出实验 ID，想深入了解为什么某些任务失败——不仅是"错了什么"，而是"为什么错"。
-
-**完整指南**：读取 `references/deep-analysis.md`，其中包含三阶段工作流：
+对已完成实验做系统性 trajectory 分析，逐任务定位失败根因。**完整指南**读取 `references/deep-analysis.md`。
 
 | Phase | 做什么 | 输出 |
 |-------|--------|------|
 | 1. 实验概览 | 用 `live-score.py` 获取全量数据 | `overview.json` |
-| 2. 并行深度分析 | 每批 5-8 个子 agent 分析失败 job 的 trajectory | 每个 task 一个 `.md` 分析文件 |
+| 2. 并行深度分析 | 每批 5-8 个子 agent 分析失败 job 的 trajectory | 每 task 一个 `.md` 分析文件 |
 | 3. 模式聚合 | 汇总失败分类分布 + 改进建议 | `SUMMARY.md` |
 
-**快速启动**：
-
 ```bash
-# Phase 1: 获取概览
+# Phase 1
 python3 scripts/live-score.py -e <EXP_ID> [--pre] --text
-
-# 或使用辅助脚本生成结构化 JSON
+# 或
 python3 scripts/fetch-overview.py <EXP_ID> [--pre] --output /tmp/bench-analysis-<EXP_ID>/overview.json
 ```
 
-然后按 `references/deep-analysis.md` 的 Phase 2/3 执行深度分析和聚合。
-
-**失败分类体系**：见 `references/failure-taxonomy.md`（8 种分类 + 边界判断指南）。
+Phase 2/3 见 `references/deep-analysis.md`。**失败分类体系**见 `references/failure-taxonomy.md`（8 种分类 + 边界判断指南）。
 
 ---
 
 ## Section 7: Sandbox Run — 沙箱内执行回归
 
-将回归脚本提交到 ROCK 沙箱中运行，适用于需要内网环境访问或长时间隔离执行的场景。
+适用于需要内网环境访问或长时间隔离执行的场景。
 
-### 适用场景
+**架构**：沙箱运行在 `sg-a`（可安装 rockcli），沙箱内 `rc agent run` 指定 `--cluster vpc-sg-a`（agent job 在 VPC 集群，可拉取内网镜像）。
 
-- 回归需要访问内网资源（VPC 内的 API、数据库、私有镜像等）
-- 单次回归耗时较长（数小时甚至过夜），不想占用本地终端
-- 需要更稳定的网络环境（避免本地网络抖动导致任务中断）
-- 希望在受控的资源配额下运行（固定 CPU/内存）
+> ⚠️ **不要把沙箱起在 `vpc-sg-a`**（npm registry 不通，rockcli 安装失败）。
+> **`--cluster` 是全局选项**，必须放在 `rc` 之后子命令之前：`rc --cluster sg-a sandbox start ...`
 
-### 前置条件
-
-执行前向用户确认以下信息：
-
-| 项目 | 说明 |
-|------|------|
-| 工号（`--user-id`） | 用于沙箱资源归属，`rc sandbox start` 默认用当前登录账号，通常无需额外传入；如有多账号场景则需确认 |
-| `ROCK_API_KEY` | ROCK 平台凭据 |
-| `ANTHROPIC_API_KEY` | Anthropic 凭据（如使用 Claude agent） |
-| 其他 env var | 询问用户是否有其他需要注入的环境变量 |
-| rockcli 版本 | 是否使用 beta 版（正式版 / beta 版安装脚本不同） |
-| 集群 | 沙箱所用集群，通常为 `vpc-sg-a`（内网场景），可询问用户确认 |
-
-> **`--cluster` 是全局选项**，必须放在 `rc` 之后、子命令之前：
-> `rc --cluster vpc-sg-a sandbox start ...`，**不能**写成 `rc sandbox start --cluster ...`
-
----
+**执行前向用户确认**：工号（`user_id`）、`ROCK_TOKEN`、`ANTHROPIC_API_KEY`、其他 env var、rockcli 版本（正式/beta）。
 
 ### Step 1 — 启动沙箱
 
 ```bash
-rc --cluster vpc-sg-a sandbox start \
+rc --cluster sg-a sandbox start \
   --auto-clear 86400 \
   --wait-for-alive \
   --memory 16g \
   --cpus 4
 ```
 
-> 输出中包含 `SANDBOX_ID`（如 `sb-xxxxxxxx`），后续所有命令均需带上此 ID。
-
-**`sandbox start` 支持的参数（仅这几个，不要传其他参数）：**
-
-| 参数 | 说明 |
-|------|------|
-| `--image` | 沙箱镜像（可选） |
-| `--memory` | 内存配额（如 `16g`） |
-| `--cpus` | CPU 核数（如 `4`） |
-| `--timeout` | 沙箱超时时间（秒） |
-| `--auto-clear` | 自动清理时间（秒），建议设足够长（如 86400 = 24h） |
-| `--wait-for-alive` | 阻塞等待沙箱就绪后再返回 |
-
----
+`sandbox start` 仅支持：`--image`、`--memory`、`--cpus`、`--timeout`、`--auto-clear`、`--wait-for-alive`。输出中包含 `SANDBOX_ID`（如 `sb-xxxxxxxx`）。
 
 ### Step 2 — 安装 rockcli
 
 ```bash
-# 正式版
 rc sandbox <SANDBOX_ID> exec 'bash -c "$(curl -fsSL http://xrl.alibaba-inc.com/install.sh)"'
-
-# beta 版（如用户需要）
+# beta 版
 rc sandbox <SANDBOX_ID> exec 'bash -c "$(curl -fsSL http://xrl.alibaba-inc.com/install_beta.sh)"'
-
-# 验证安装
-rc sandbox <SANDBOX_ID> exec 'rc version'
+rc sandbox <SANDBOX_ID> exec 'rc --version'
 ```
-
----
 
 ### Step 3 — 注入凭据
 
-> ⚠️ **沙箱不支持 `-e` 传入环境变量**，必须通过 `exec` 写入 `~/.bashrc`。
+> ⚠️ 沙箱不支持 `-e` 传入 env var，必须通过 `exec` 写入 `~/.bashrc`。
 
 ```bash
-rc sandbox <SANDBOX_ID> exec 'echo "export ROCK_API_KEY=<KEY>" >> ~/.bashrc'
+rc sandbox <SANDBOX_ID> exec 'echo "export ROCK_TOKEN=<TOKEN>" >> ~/.bashrc'
 rc sandbox <SANDBOX_ID> exec 'echo "export ANTHROPIC_API_KEY=<KEY>" >> ~/.bashrc'
-
-# 如有其他 env var，同样方式追加
-# rc sandbox <SANDBOX_ID> exec 'echo "export OTHER_KEY=<VALUE>" >> ~/.bashrc'
-
-# 验证凭据生效
+# 验证
 rc sandbox <SANDBOX_ID> exec 'source ~/.bashrc && rc agent bench list --pre'
 ```
 
----
+### Step 4 — 确认回归配置
 
-### Step 4 — 确认回归配置（复用 Section 1 逻辑）
-
-在本机侧按照 Section 1 的流程确认回归参数（bench / dataset / split / agent / concurrency 等），并生成 `--from-config` 所需的配置文件（`--save-config ./my-config.json`）。
-
-> 沙箱内使用 `--from-config` 加载配置，可避免命令行过长或在 exec 中转义复杂参数。
-
----
+在本机按 Section 1 确认参数并生成 `--save-config ./my-config.json`。
 
 ### Step 5 — 创建目录并上传文件
 
 ```bash
-# 创建工作目录结构
 rc sandbox <SANDBOX_ID> exec 'mkdir -p /workspace/scripts /workspace/results /workspace/logs /workspace/configs'
-
-# 上传脚本目录（递归）
 rc sandbox <SANDBOX_ID> upload --dir <local-scripts-dir> --target-path /workspace/scripts --recursive
-
-# 上传回归配置文件
 rc sandbox <SANDBOX_ID> upload --file ./my-config.json --target-path /workspace/my-config.json
 ```
 
-> `<local-scripts-dir>` 是本机 `regression.py` 所在的 `scripts/` 目录（此 skill 的绝对路径）。
-
----
-
 ### Step 6 — 后台启动回归
 
-> ⚠️ **必须用 `nohup ... &` 后台化**，否则 `exec` 超时断连后回归进程会被杀死。
+> ⚠️ **必须用 `nohup ... &`**，否则 exec 超时断连后进程被杀。
 
 ```bash
-rc sandbox <SANDBOX_ID> exec 'source ~/.bashrc && cd /workspace && nohup python3 scripts/regression.py run --from-config /workspace/my-config.json --window-size 10 > /workspace/logs/regression.out 2>&1 &'
+rc sandbox <SANDBOX_ID> exec 'source ~/.bashrc && cd /workspace && nohup python3 scripts/regression.py run --from-config /workspace/my-config.json --cluster vpc-sg-a --window-size 10 > /workspace/logs/regression.out 2>&1 &'
 ```
-
-如需覆盖配置文件中的部分参数，在 `--from-config` 后追加 CLI 参数（CLI 优先级更高）：
-
-```bash
-rc sandbox <SANDBOX_ID> exec 'source ~/.bashrc && cd /workspace && nohup python3 scripts/regression.py run --from-config /workspace/my-config.json --window-size 5 --concurrency 5 > /workspace/logs/regression.out 2>&1 &'
-```
-
----
 
 ### Step 7 — 监控进度
 
 ```bash
-# 查看最新日志（最后 50 行）
 rc sandbox <SANDBOX_ID> exec 'tail -50 /workspace/logs/regression.out'
-
-# 查看沙箱命令日志
 rc sandbox <SANDBOX_ID> log search --log-file command.log -m 30
-
-# 查看回归进程是否存活
 rc sandbox <SANDBOX_ID> exec 'pgrep -a python3'
 ```
 
-若需要长跑巡检，参考 Section 3 中的 Monitor 机制：在沙箱内定期执行 `sync` + `report`，输出写到 `/workspace/logs/` 后再下载分析。
-
----
-
 ### Step 8 — 取回结果
-
-回归完成后，将结果文件下载到本机：
-
-```bash
-# 下载结果 JSON（EXP_ID 可从日志输出中获取）
-rc sandbox <SANDBOX_ID> download --file /workspace/results/<EXP_ID>.json
-
-# 下载配置快照
-rc sandbox <SANDBOX_ID> download --file /workspace/configs/<EXP_ID>.json
-
-# 在本机生成报告（使用 Section 2 的 report 命令）
-python3 regression.py report /path/to/<EXP_ID>.json
-```
-
-如果不确定 EXP_ID，可先列出结果目录：
 
 ```bash
 rc sandbox <SANDBOX_ID> exec 'ls /workspace/results/'
+rc sandbox <SANDBOX_ID> download --file /workspace/results/<EXP_ID>.json
+rc sandbox <SANDBOX_ID> download --file /workspace/configs/<EXP_ID>.json
+python3 regression.py report /path/to/<EXP_ID>.json
 ```
 
----
-
-### Step 9 — 停止并清理沙箱
+### Step 9 — 停止沙箱
 
 ```bash
 rc sandbox <SANDBOX_ID> stop
 ```
 
-> `--auto-clear` 会在指定时间后自动清理，但提前手动 stop 可立即释放资源，**stop 之后文件将无法下载**，务必先完成 Step 8。
+> 务必先完成 Step 8，stop 后文件不可访问。
 
----
-
-### 注意事项与常见陷阱
+### 常见陷阱
 
 | 陷阱 | 说明 |
 |------|------|
-| `--cluster` 位置错误 | 必须是 `rc --cluster vpc-sg-a sandbox ...`，不能放在子命令后面 |
-| 不加 `nohup &` | exec 连接超时断开后，回归进程会随之终止 |
-| 凭据未 `source ~/.bashrc` | `exec` 每次是新的 shell，必须在命令前加 `source ~/.bashrc &&` 才能读到写入的 env var |
-| stop 前未下载结果 | 沙箱停止后文件不可访问，先 download 再 stop |
-| `sandbox start` 参数传错 | `--env`/`-e` 等不是 `sandbox start` 的合法参数，会报错；只允许 `--image`/`--memory`/`--cpus`/`--timeout`/`--auto-clear`/`--wait-for-alive` |
+| 沙箱集群选错 | 沙箱起在 **`sg-a`**，不是 `vpc-sg-a` |
+| 忘记 `--cluster vpc-sg-a` | 沙箱内 `regression.py run` 必须带此参数 |
+| `--cluster` 位置错误 | `rc --cluster sg-a sandbox ...`，不能放子命令后 |
+| 不加 `nohup &` | exec 断连后进程终止 |
+| 凭据未 `source ~/.bashrc` | 每次 exec 是新 shell，必须 source |
+| stop 前未下载结果 | 沙箱停止后文件不可访问 |
+| `sandbox start` 参数传错 | `--env`/`-e` 不合法，只允许上方列出的 6 个参数 |
+| pictor-permissions 间歇性 500 | sg-a 出口 IP 访问鉴权不稳定，可重试 |
 
 ---
 
-## Experiment ID Resolution
+## Experiment ID 解析规则
 
-All subcommands accept an optional `experiment` positional argument:
-
-1. **Omitted** — uses the most recently modified file in `results/`
-2. **Experiment ID** — matches `results/{id}.json`, then prefix-matches `results/{id}*.json`
-3. **File path** — uses the file directly
+1. **省略** — 使用 `results/` 中最近修改的文件
+2. **实验 ID** — 匹配 `results/{id}.json`，再前缀匹配 `results/{id}*.json`
+3. **文件路径** — 直接使用
 
 ---
 
-## Bundled Resources
+## 附带资源
 
-| Path | When to read |
+| 路径 | 何时读取 |
 |------|-------------|
-| `references/sop.md` | User asks for the full SOP, typical workflows, or detailed parameter reference |
-| `references/rockcli-cheatsheet.md` | User needs raw `rc` commands outside of regression.py (manual queries, dataset browsing, sandbox management) |
-| `references/harbor-config-manual.md` | User asks how to write ROCK Harbor Job `config.yaml`, `JobConfig` fields, timeout/kwargs semantics, environment kwargs, or per-agent configuration |
-| `references/data-formats.md` | User asks about result JSON structure, report data format, task fields, exception types, or wants to parse/script against result files |
-| `references/team-orchestration.md` | Full regression with 7-role parallel pipeline — **legacy v2 prompt-driven mode** (single-session). Lead / OracleChecker / NopChecker / Runner / Monitor / Diagnostician / Operator. Coordinate subagents so main context only holds conclusions. Includes Operator loop for stop→destroy→retune→rerun cycles |
-| `references/team-orchestration-teamcreate.md` | Full regression — **TeamCreate mode** (recommended for long runs / cross-session resume). Uses CC-native TeamCreate + TaskList state machine + structured output schemas. Currently implements Phase 1-2 (task-1 ~ task-4: config confirm + smoke + decision); Phase 3+ (full run / monitor / diagnose / operator loop) pending |
-| `references/schemas.json` | Structured output schemas for TeamCreate mode — `SmokeOutput` (task-2/task-3), `ConfigConfirmOutput` (task-1), `SmokeDecisionOutput` (task-4). Enforced via Agent tool with schema option. Legacy v2 mode does NOT use these schemas |
-| `scripts/regression.py` | The main script — run it, don't read it into context (2000+ lines) |
+| `references/sop.md` | 完整 SOP、典型工作流、详细参数参考 |
+| `references/rockcli-cheatsheet.md` | 原始 `rc` 命令（手动查询、数据集浏览、沙箱管理） |
+| `references/harbor-config-manual.md` | Harbor Job `config.yaml`、JobConfig 字段、timeout/kwargs |
+| `references/data-formats.md` | 结果 JSON 结构、任务字段、exception 类型、解析方式 |
+| `references/team-orchestration.md` | 全量回归 — legacy v2 prompt 驱动（单 session，7 角色） |
+| `references/team-orchestration-teamcreate.md` | 全量回归 — TeamCreate 模式（推荐，跨 session 恢复） |
+| `references/schemas.json` | TeamCreate 结构化输出 schemas（SmokeOutput、ConfigConfirmOutput、SmokeDecisionOutput） |
 | `references/deep-analysis.md` | 深度失败分析完整指南（三阶段工作流），Section 6 触发时读取 |
-| `references/failure-taxonomy.md` | 8 种失败分类定义、识别方法和边界判断指南，深度分析时参考 |
+| `references/failure-taxonomy.md` | 8 种失败分类定义、识别方法和边界判断指南 |
 
 ---
 
-## Common Scenarios
+## 常见场景
 
-### "I want to run a new benchmark"
+### 跑新的 benchmark
 
-1. Confirm with the user: bench name, dataset, split, agent, concurrency, and any
-   pass-through parameters they need (image, cluster, model, cpus/memory, env vars,
-   namespace, pre/prod). Do not assume defaults for these — only pass what the user
-   specifies.
-2. **Ask whether to first smoke-check the environment with `oracle` / `nop`** on a
-   few tasks before the full run (see Section 1). Skip only if the user declines.
-3. Run `regression.py run` with the confirmed parameters
-4. When done, generate HTML report
+1. 确认：bench、dataset、split、agent、concurrency 及透传参数（image/cluster/model 等）
+2. **询问是否先用 `oracle`/`nop` 冒烟验证**（见 Section 1）
+3. `regression.py run`
+4. 完成后生成 HTML 报告
 
-### "The run got interrupted"
+### 运行被中断
 
-1. `regression.py sync` to refresh server-side states
-2. `regression.py report` to see current status
-3. `regression.py run --resume` to continue unfinished tasks
+1. `regression.py sync` → 2. `regression.py report` → 3. `regression.py run --resume`
 
-### "Why did tasks fail?"
+### 任务为什么失败
 
-1. `regression.py diagnose` for overview
-2. Pick a representative task from the top exception group
-3. `regression.py diagnose --task <ID> --remote --trajectory` for details
-4. Suggest fix or retry based on root cause
+1. `regression.py diagnose` 概览 → 2. 选 top exception group 代表 task → 3. `regression.py diagnose --task <ID> --remote --trajectory` → 4. 根据根因建议修复或 retry
 
-### "Retry just the Docker failures"
+### 只重跑 Docker 失败的任务
 
-1. `regression.py diagnose --exception RuntimeError` to confirm the set
+1. `regression.py diagnose --exception RuntimeError` 确认集合
 2. `regression.py retry --filter error --exception-type RuntimeError ...`
-3. `regression.py report` on the new experiment
+3. `regression.py report` 查看新实验
 
-### "How do I see what datasets/agents/benches are available?"
+### 查看可用的 dataset/agent/bench
 
-Read `references/rockcli-cheatsheet.md`, then use `rc datasets`, `rc agent bench list`, etc.
+读 `references/rockcli-cheatsheet.md`，使用 `rc datasets`、`rc agent bench list` 等。
 
-### "I want to align/reproduce published scores"（对齐分数场景）
+### 对齐/复现已发布分数
 
-1. 确认对齐目标：哪个 bench/dataset/split，参考来源是什么（leaderboard / paper / 内部历史）
-2. 获取参考分数：从来源提取 per-task reward（或至少 aggregate pass rate）
-3. 配置交叉检查：对比参考配置 vs 本次配置，标出差异（model / image / split / env vars / 采样与推理参数：temperature · top_p · thinking · max_tokens · 推理超时）
-4. 创建 baseline 文件：`baselines/<name>.json`（格式见 `references/data-formats.md` § 对齐基线文件）
-5. Oracle/nop 冒烟验证（同标准流程）
-6. Run `regression.py run` with confirmed parameters
-7. 生成报告 + 派 Diagnostician 做 alignment 对比：
-   - 逐 task 比对 actual vs expected reward
-   - 配置 drift 分析
-   - Top gap tasks + 根因假设
-8. 根据 Diagnostician 结论决定下一步（调参 retry / 接受差异 / 报告给用户）
+1. 确认 bench/dataset/split，获取参考分数来源
+2. 提取 per-task reward（或 aggregate pass rate）
+3. 配置交叉检查：对比 model / image / split / env vars / 采样推理参数（temperature · top_p · thinking · max_tokens · 推理超时）
+4. 创建 `baselines/<name>.json`（格式见 `references/data-formats.md` § 对齐基线文件）
+5. Oracle/nop 冒烟 → `regression.py run` → 报告 + alignment 对比（actual vs expected reward、配置 drift、top gap tasks）
+6. 根据结论决定：调参 retry / 接受差异 / 报告给用户
