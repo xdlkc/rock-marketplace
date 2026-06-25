@@ -473,8 +473,9 @@ def resolve_concurrency(config, total_tasks):
       window_size <= 0 表示不限制（= total_tasks，全部一起跑）。
     - concurrency 为兼容同义词（旧用法）；两者同时给定时取较小值，避免超限。
     """
-    ws = getattr(config, "window_size", 0) or 0
-    if ws <= 0:
+    ws = getattr(config, "window_size", 0)
+    # 处理 _UNSET：如果是 _UNSET 或 None 或 <= 0，都视为不限制
+    if ws is _UNSET or ws is None or ws <= 0:
         cap = total_tasks
     else:
         cap = ws
