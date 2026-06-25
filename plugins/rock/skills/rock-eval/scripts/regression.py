@@ -374,9 +374,13 @@ def normalize_args(args):
 
 
 def build_rc_cmd(config, split, task_id, experiment_id):
-    cmd = [
-        "rc", "agent", "run",
-        "--bench", config.bench,
+    cmd = ["rc", "agent", "run"]
+    # --bench 和 --config 互斥：有 config 时用 Config 模式，否则用 Bench 模式
+    if getattr(config, "config", ""):
+        cmd += ["--config", config.config]
+    else:
+        cmd += ["--bench", config.bench]
+    cmd += [
         "--split", split,
         "--task", task_id,
         "--experiment-id", experiment_id,
@@ -400,8 +404,6 @@ def build_rc_cmd(config, split, task_id, experiment_id):
         cmd += ["--memory", config.memory]
     if getattr(config, "companion", ""):
         cmd += ["--with", config.companion]
-    if getattr(config, "config", ""):
-        cmd += ["--config", config.config]
     if getattr(config, "async_mode", False):
         cmd += ["--async"]
     if getattr(config, "user_id", ""):
