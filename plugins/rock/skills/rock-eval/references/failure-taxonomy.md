@@ -307,3 +307,66 @@ infra_error > env_issue > timeout > misunderstanding > strategy_error > capabili
 - [ ] 最终状态是什么？（卡住/超时/提交错误答案/放弃）
 - [ ] exception.txt 中的异常属于哪个层面？
 - [ ] verifier 输出与 agent 最终提交的答案是否一致？
+
+---
+
+## 解决方案映射表
+
+异常任务（`abnormal` 和 `zero_plus_abnormal` 类型）的根因分析和解决方案参考。对应 `references/report-templates.md` 中报告模板 §4 解决方案部分。
+
+### env_issue 解决方案映射
+
+| 异常特征 | 常见 exception_type / message | 通用建议 | 参数调整方向 | 处置判断 |
+|----------|------------------------------|---------|-------------|---------|
+| Docker/容器启动失败 | `RuntimeError: Docker compose command failed` | 检查镜像是否正确、资源是否充足 | `--image` 更换镜像；`--memory` 增大内存 | ✅ 换镜像或加资源后 retry |
+| DNS 解析失败 | `no such host`、`DNS resolution failed` | 确认沙箱网络配置、检查集群 DNS 服务 | `--cluster` 切换集群 | ⚠️ 需确认集群网络策略 |
+| 镜像拉取超时 | `image pull timeout`、`ImagePullBackOff` | 检查镜像仓库可达性、镜像大小 | `--image` 使用预缓存镜像 | ✅ 换预缓存镜像后 retry |
+| 依赖安装失败 | `pip install failed`、`npm install error` | 检查网络连通性和包仓库镜像配置 | `--ee` 配置镜像源环境变量 | ⚠️ 需检查沙箱网络或配置镜像源 |
+| 端口绑定失败 | `port already in use`、`bind: address already in use` | 检查是否有残留容器占用端口 | 无直接参数调整 | ⚠️ 需清理残留沙箱后 retry |
+| 文件系统权限错误 | `Permission denied`、`EACCES` | 检查容器内用户权限和挂载卷权限 | 无直接参数调整 | ⚠️ 需检查镜像权限配置 |
+| OOM（容器级） | `OOMKilled`、`Container killed` | 增大内存分配 | `--memory` 增大（如 4Gi→8Gi）；`--cpus` 增加 | ✅ 加资源后 retry |
+| 环境构建超时 | `environment_setup.duration_sec` 接近上限 | 增大 setup 超时 | `override_setup_timeout_sec` 增大 | ✅ 增大超时后 retry |
+
+### infra_error 解决方案映射
+
+| 异常特征 | 常见 exception_type / message | 通用建议 | 参数调整方向 | 处置判断 |
+|----------|------------------------------|---------|-------------|---------|
+| API 500 错误 | `InternalServerError`、`HTTP 500` | 平台服务异常，等待恢复或联系平台团队 | 无直接参数调整 | 🐛 平台 bug 需上报 |
+| API 超时 | `ServiceUnavailable`、`HTTP 503`、`gateway timeout` | 平台负载过高或服务重启中 | 降低 `--concurrency`；错峰 retry | ✅ 降并发或稍后 retry |
+| 沙箱启动失败 | `sandbox creation failed`、`Container not found` | 集群资源不足或调度异常 | `--cluster` 切换集群；`--memory`/`--cpus` 调小以降低调度难度 | ⚠️ 需确认集群资源或切换集群 |
+| 连接被拒 | `ConnectionRefused`、`Connection reset` | API 服务不可达 | 无直接参数调整 | 🐛 平台 bug 需上报 |
+| 任务未完成（finished_at=null） | `finished_at = null` 且 `duration_sec` 极短 | 任务可能在调度阶段失败 | 无直接参数调整 | 🐛 检查平台日志后上报 |
+| 凭证/认证错误 | `AuthenticationError`、`401 Unauthorized`、`403 Forbidden` | 检查 API Key 是否有效、是否过期 | `--ee` 更新 API Key 环境变量 | ⚠️ 需更新凭证后 retry |
+| 速率限制 | `RateLimitError`、`429 Too Many Requests` | 降低并发或切换 API Key | `--concurrency` 降低；`--ee` 切换 API Key | ✅ 降并发后 retry |
+| 沙箱崩溃 | `Sandbox crashed`、`Container exited unexpectedly` | 检查是否资源不足或镜像问题 | `--memory` 增大；`--image` 更换镜像 | ✅ 加资源后 retry 或 🐛 上报 |
+
+### 处置判断决策树
+
+```
+异常发生
+├── exception 信息是否指向明确的参数问题？（OOM / 超时 / 速率限制）
+│   └── 是 → 查上方映射表获取参数调整建议 → ✅ 调参后 retry
+│   └── 否 ↓
+├── 错误是否发生在平台层？（API 500 / 调度失败 / 沙箱生命周期）
+│   └── 是 → 🐛 平台 bug 需上报
+│   └── 否 ↓
+├── 错误是否涉及环境配置？（网络 / 权限 / 依赖 / DNS）
+│   └── 是 → ⚠️ 需人工介入检查环境
+│   └── 否 → ⚠️ 需人工介入进一步排查
+```
+
+### 参数调整优先级
+
+当多个参数都可能需要调整时，按以下优先级操作：
+
+1. **低风险参数**（可直接调整，无需用户确认）：
+   - `memory`、`cpus`：资源类参数
+   - `override_timeout_sec`、`override_setup_timeout_sec`：超时类参数
+   - `concurrency`：并发控制
+   - `--ee` 环境变量：镜像源、超时配置等
+
+2. **高风险参数**（需用户确认后调整）：
+   - `--image`：更换运行镜像
+   - `--cluster`：切换集群
+   - `--model`：更换模型
+   - `--agent`：更换 agent
