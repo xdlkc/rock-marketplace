@@ -386,6 +386,10 @@ def build_rc_cmd(config, split, task_id, experiment_id):
         "--experiment-id", experiment_id,
         "--agent", config.agent,
     ]
+    # 显式透传 --dataset，避免 rc 回退使用 bench 模板内嵌的 datasets.name
+    # (rc agent run --help: "推荐使用，优先于 --set datasets.0.name")
+    if config.dataset:
+        cmd[3:3] = ["--dataset", config.dataset]
     if getattr(config, "pre", True):
         cmd += ["--pre"]
     if config.image:
