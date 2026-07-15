@@ -1,9 +1,9 @@
 ---
 name: rock-cli
-description: 使用 rockcli（rc）操作 ROCK 平台的命令指南：管理沙箱、运行与查看 agent 评估、管理实验、转储镜像等。当用户要查 rc 命令的用法，或用 rockcli 起停沙箱、在沙箱中执行命令、收发文件、跑 agent 评估、管理实验或搬运镜像时使用。
+description: 使用 rockcli（rc）操作 ROCK 平台的命令指南：管理沙箱、运行与查看 agent 评估、管理实验、转储镜像、管理数据集等。当用户要查 rc 命令的用法，或用 rockcli 起停沙箱、在沙箱中执行命令、收发文件、跑 agent 评估、管理实验、搬运镜像或管理数据集时使用。
 ---
 
-# ROCK CLI 使用指南
+# ROCK CLI 使用指南（v2.7）
 
 ## 安装与更新
 
@@ -15,7 +15,7 @@ bash -c "$(curl -fsSL http://xrl.alibaba-inc.com/install.sh)"
 rockcli update
 ```
 
-安装后可用 `rockcli` 或 `rc`。小版本自动升级，major/minor 需手动升级。
+安装后可用 `rockcli` 或 `rc`。patch/beta 升级静默完成，minor 会自动升级，major 需确认。
 
 ### 认证配置
 
@@ -23,6 +23,8 @@ rockcli update
 export ROCK_API_KEY=your-api-key          # 方式一：环境变量（优先级最高）
 rockcli --api-key your-key <command>      # 方式二：全局参数
 # 方式三：配置文件 ~/.rock/setting.json
+rc login --api-key <key>                  # 保存凭据到配置文件
+rc whoami                                 # 查看当前身份
 ```
 
 ---
@@ -46,7 +48,7 @@ rockcli sandbox <id> stop
 适用：在沙箱中运行本地项目、批处理任务
 
 ```bash
-rockcli sandbox start --memory 16g --cpus 4 --wait-for-alive
+rockcli sandbox start --memory 16g --cpus 4 --disk 100g --wait-for-alive
 
 # 递归上传（注意：-r 短参数无效，必须用 --recursive）
 rockcli sandbox <id> upload --dir ./my-project --target-path /app --recursive
@@ -91,9 +93,19 @@ rockcli sandbox <id> replay
 
 ```bash
 rockcli sandbox <id> status
+rockcli sandbox <id> status --output json   # JSON 格式输出
 ```
 
 状态流转：`pending` → `alive` → `stopping` → `stopped`
+
+支持查询已停止/已删除沙箱的状态。状态输出分段展示并包含 state timeline。
+
+### 场景六-b：重启已停止的沙箱
+
+```bash
+rockcli sandbox <id> restart
+rockcli sandbox <id> restart --wait-for-alive --timeout 120
+```
 
 ### 场景七：运行 AI Agent 评估任务
 
@@ -112,6 +124,9 @@ rockcli agent run --bench aone-bench --task codereview-20789198 --agent claude-c
 # 异步模式（提交后立即返回 sandbox_id）
 rockcli agent run --config job.yaml --async
 
+# 静默模式（前台只显示摘要和日志路径，详细日志写入 ~/.rock/jobs/）
+rockcli agent run --config job.yaml --quiet
+
 # 使用预发环境
 rockcli agent run --config job.yaml --pre
 ```
@@ -126,6 +141,12 @@ rockcli agent view -E
 
 # 列举指定实验的 Jobs
 rockcli agent view -e exp-id
+
+# 按条件过滤 Jobs
+rockcli agent view -e exp-id --agent claude-code --date today --sort avg_reward:desc
+
+# 全文搜索
+rockcli agent view -e exp-id --q "keyword"
 
 # 查看 Job 详情
 rockcli agent view -j my-job
@@ -175,13 +196,12 @@ rc expr aone-bench-test sandboxes stop -y --concurrency 10
 适用：将 Docker 镜像从源仓库镜像到目标仓库、通过沙箱批量搬运镜像、管理转储任务
 
 ```bash
-# 仓库间镜像单个镜像（mirror）
-rc image mirror nginx:latest \
-  --target-registry registry.example.com \
-  --target-username user --target-password pass
+# skopeo 模式批量镜像（推荐，默认）
+rc image mirror docker:dind --mode skopeo
+rc image mirror -f images.txt --mode skopeo --concurrency 10 --copy-concurrency 8
 
-# 从文件批量镜像 + 并发沙箱
-rc image mirror -f images.jsonl -c 10 --mode remote \
+# 仓库间镜像单个镜像
+rc image mirror nginx:latest \
   --target-registry registry.example.com \
   --target-username user --target-password pass
 
@@ -190,17 +210,61 @@ rc image mirror nginx:latest --mode local \
   --target-registry registry.example.com \
   --target-username user --target-password pass
 
-# 通过沙箱转储镜像（dump）
-rc image dump nginx:latest python:3.11 --concurrency 2
+# 在沙箱中构建并推送镜像
+rc image build . -t my-image:v1
+rc image build . -t my-image:dev --mode local --push
 
 # 管理转储任务（task）
 rc image task list                  # 列出所有任务
 rc image task status <task-id> -v   # 查看任务状态（含每条镜像详情）
-rc image task resume <task-id>      # 恢复失败任务
 rc image task delete <task-id>      # 删除任务
 ```
 
-详细参数见 [references/agent.md](references/agent.md)、[references/experiment.md](references/experiment.md) 和 [references/image.md](references/image.md)。
+### 场景十二：数据集管理
+
+适用：查看、查询、上传 ROCK 数据集，从 Hugging Face 导入数据集
+
+```bash
+# 列出数据集
+rc datasets list
+rc datasets list --prod
+
+# 查看数据集详情（省略 action 时默认 detail）
+rc datasets my-org/swe-bench
+
+# 查看数据集 split 列表
+rc datasets my-org/swe-bench splits
+
+# 查询任务列表（支持分页、搜索、排序）
+rc datasets my-org/swe-bench tasks --split test --filter "keyword" --limit 50
+
+# 查看单个任务详情
+rc datasets my-org/swe-bench task --task task-id --split test
+
+# 上传本地目录到数据集
+rc datasets my-org/swe-bench upload ./tasks --split v1
+rc datasets upload --org my-org --dataset swe-bench --dir ./tasks --concurrency 8
+
+# 从 Hugging Face 导入数据集
+HF_TOKEN=xxx rc datasets upload --org my-org --dataset swe-bench --split test \
+  --from hf --hf-name SWE-bench/SWE-bench --hf-split test
+
+# 数据集文件操作
+rc datasets my-org/swe-bench fs ls --task task-1                     # 列出文件
+rc datasets my-org/swe-bench fs get --task task-1 --path result.json # 查看内容
+rc datasets my-org/swe-bench fs download --task task-1 --path file.txt --dest ./  # 下载
+```
+
+### 场景十三：Windows 沙箱
+
+适用：需要在 Windows 环境中运行任务
+
+```bash
+# 启动 Windows 沙箱（自动使用固定 cluster 和镜像）
+rc sandbox start --image-os windows --wait-for-alive
+```
+
+详细参数见 [references/agent.md](references/agent.md)、[references/experiment.md](references/experiment.md)、[references/image.md](references/image.md) 和 [references/datasets.md](references/datasets.md)。
 
 ---
 
@@ -208,8 +272,15 @@ rc image task delete <task-id>      # 删除任务
 
 | 选项 | 说明 |
 |------|------|
-| `--verbose, -v` | 日志级别（-v: warning, -vv: info, -vvv: debug） |
-| `--base-url <url>` | 服务端地址（默认 http://xrl.alibaba-inc.com） |
+| `--verbose, -v` | 日志级别（-v: warning, -vv: info, -vvv: debug，含 API 请求调试） |
+| `--base-url <url>` | 服务端地址（默认 https://xrl.alibaba-inc.com） |
+| `--style <dark\|light>` | 终端输出样式 |
 | `--api-key <key>` | API 密钥 |
-| `--cluster <id>` | 集群标识 |
+| `-c, --cluster <id>` | 集群标识 |
+| `--user-id <id>` | 用户 ID（工号） |
+| `--experiment-id <id>` | 实验 ID |
+| `--image <name>` | Docker 镜像 |
+| `--cpus <n>` | CPU 规格（Core） |
+| `--memory <size>` | 内存规格（正数按 GiB 处理，支持 g/m 单位） |
+| `--disk <size>` | 磁盘大小（正数按 GiB 处理，支持 g/m 单位，默认 50g） |
 | `-H, --extra-header` | 额外 HTTP 请求头（格式：`Key=Value`） |

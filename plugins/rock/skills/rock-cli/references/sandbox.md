@@ -4,11 +4,13 @@
 
 - [start - 启动沙箱](#start)
 - [stop - 停止沙箱](#stop)
+- [restart - 重启沙箱](#restart)
 - [exec - 执行命令](#exec)
 - [status - 查看状态](#status)
 - [upload - 上传文件](#upload)
 - [download - 下载文件](#download)
 - [attach - 交互式 REPL](#attach)
+- [fs - 文件系统操作](#fs)
 - [log - 日志操作](#log)
 - [history - 历史记录](#history)
 
@@ -23,16 +25,30 @@ rockcli sandbox start [选项]
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
 | `--image <name>` | Docker 镜像地址 | hub.docker.alibaba-inc.com/chatos/python:3.11 |
-| `--memory <size>` | 内存限制 | 8g |
+| `--memory <size>` | 内存限制（正数按 GiB 处理，支持 g/m 单位） | 8g |
 | `--cpus <num>` | CPU 限制 | 2 |
-| `--timeout <sec>` | 启动超时（秒） | 120 |
+| `--disk <size>` | 磁盘大小（正数按 GiB 处理，支持 g/m 单位） | 50g |
+| `--timeout <sec>` | 启动超时（秒） | 300 |
 | `--auto-clear <sec>` | 自动清理时间（秒） | 300 |
+| `--auto-delete <sec>` | 自动删除秒数（0=立即，默认 1 天） | 86400 |
+| `--image-os <os>` | 沙箱操作系统（`linux` / `windows`） | linux |
+| `--num-gpus <n>` | GPU 数量 | - |
+| `--accelerator-type <type>` | 加速器类型 | - |
+| `--registry-username <user>` | 拉取镜像的 registry 用户名 | - |
+| `--registry-password <pass>` | 拉取镜像的 registry 密码 | - |
+| `--limit-cpus <n>` | CPU 硬限制上限（独立于 --cpus） | - |
+| `--use-kata-runtime` | 使用 Kata Containers 运行时 | false |
 | `--wait-for-alive` | 等待沙箱变为 alive 状态 | - |
+| `--pre` | 使用预发环境 | - |
+| `-o, --output <format>` | 输出格式（table / json） | table |
 
 ```bash
 rockcli sandbox start
-rockcli sandbox start --memory 16g --cpus 4
+rockcli sandbox start --memory 16g --cpus 4 --disk 100g
 rockcli sandbox start --wait-for-alive
+rockcli sandbox start --cluster zb-a --wait-for-alive
+rockcli sandbox start --image-os windows    # Windows 沙箱
+rockcli sandbox start --output json         # JSON 格式输出
 ```
 
 ---
@@ -40,7 +56,29 @@ rockcli sandbox start --wait-for-alive
 ## stop
 
 ```bash
-rockcli sandbox <id> stop
+rockcli sandbox <id> stop [--output json]
+```
+
+---
+
+## restart
+
+重启已停止的沙箱实例。
+
+```bash
+rockcli sandbox <id> restart [选项]
+```
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--wait-for-alive` | 等待沙箱就绪后再返回 | false |
+| `--timeout <sec>` | 等待超时时间（秒） | 300 |
+| `-o, --output <format>` | 输出格式（table / json） | table |
+
+```bash
+rockcli sandbox <id> restart
+rockcli sandbox <id> restart --wait-for-alive
+rockcli sandbox <id> restart --wait-for-alive --timeout 120
 ```
 
 ---
@@ -48,22 +86,27 @@ rockcli sandbox <id> stop
 ## exec
 
 ```bash
-rockcli sandbox <id> exec '<command>'
+rockcli sandbox <id> exec '<command>' [--output json]
 # 别名：execute
 ```
 
 ```bash
 rockcli sandbox <id> exec 'ls -la'
 rockcli sandbox <id> exec 'python script.py --arg1 value1'
+rockcli sandbox <id> exec 'echo hello' --output json
 ```
 
 ---
 
 ## status
 
+查看沙箱运行状态和 VNC 地址。支持查询已停止/已删除沙箱的状态。
+
 ```bash
-rockcli sandbox <id> status
+rockcli sandbox <id> status [--output json] [--pre]
 ```
+
+状态输出分段展示并包含 state timeline。
 
 ---
 
@@ -82,6 +125,7 @@ rockcli sandbox <id> upload [选项]
 | `-a, --all` | 包含隐藏文件 |
 | `-n, --no-clobber` | 不覆盖已存在的文件 |
 | `-i, --interactive` | 覆盖前提示确认 |
+| `--upload-mode <mode>` | 上传模式：auto（默认，>1MB 用 OSS）、direct（HTTP）、oss |
 
 ```bash
 # 上传单个文件
@@ -102,11 +146,12 @@ rockcli sandbox <id> upload --dir ./config --target-path /app/config -a
 ## download
 
 ```bash
-rockcli sandbox <id> download --file <remote-path>
+rockcli sandbox <id> download --file <remote-path> [--local-path <path>] [--download-mode <auto|direct|oss>]
 ```
 
 ```bash
 rockcli sandbox <id> download --file /tmp/output.txt
+rockcli sandbox <id> download --file /tmp/output.txt --local-path ./local-output.txt
 ```
 
 ---
@@ -135,6 +180,30 @@ REPL 内置命令（以 `/` 开头）：
 | `/exit` | 断开连接（沙箱和会话保留，可重连） |
 | `/close` | 永久关闭会话并退出 |
 | `/help` | 查看全部命令 |
+
+---
+
+## fs
+
+沙箱文件系统操作。
+
+```bash
+rockcli sandbox <id> fs ls [path]          # 列出目录
+rockcli sandbox <id> fs cat <path>         # 查看文件内容
+rockcli sandbox <id> fs download <path>    # 下载文件
+```
+
+| 参数 | 说明 |
+|------|------|
+| `--host-ip <ip>` | 沙箱宿主机 IP（沙箱已销毁时使用） |
+| `-s, --short` | 短格式输出（仅文件名） |
+| `-o, --output <path>` | download: 本地保存路径 |
+
+```bash
+rockcli sandbox <id> fs ls /tmp
+rockcli sandbox <id> fs cat /tmp/output.txt
+rockcli sandbox <id> fs download /tmp/output.txt -o ./local.txt
+```
 
 ---
 

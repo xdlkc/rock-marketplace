@@ -23,19 +23,42 @@ rockcli agent run --config <config.yaml> [选项]
 rockcli agent run --bench <name> --task <name> [选项]
 ```
 
+### 核心参数
+
 | 参数 | 说明 |
 |------|------|
 | `--config <path>` | JobConfig YAML 配置文件路径（Config 模式必需） |
 | `--bench <name>` | Bench 名称（Bench 模式必需，来自 benchhub 模板） |
-| `--dataset <name>` | 数据集名称（优先于 `--set datasets.0.name`） |
+| `--dataset <name>` | 数据集名称（映射到 `datasets.0.name`） |
 | `--split <name>` | 数据集 split/version 名称（映射到 `datasets.0.registry.split`） |
-| `--task <name>` | 任务名称（Bench 模式必传；Config 模式可省略并使用 YAML 中的 `datasets.0.task_names`） |
-| `--agent <name>` | Agent 名称（优先于 `--set agents.0.name`） |
-| `--model <name>` | 模型名称（优先于 `--set agents.0.model_name`） |
+| `--task <name>` | 单任务名称（与 `--tasks`/`--all`/`--resume` 互斥） |
+| `--tasks <names...>` | 指定多个任务，由一个底层 ROCK 命令统一执行 |
+| `--all` | 显式运行配置中 dataset split 的全部任务 |
+| `--resume <run-id>` | 恢复指定 ROCK run（与 task/tasks/all/dataset/split/limit 互斥） |
+| `--agent <name>` | Agent 名称（映射到 `agents.0.name`） |
+| `--model <name>` | 模型名称（映射到 `agents.0.model_name`） |
+| `--namespace, -n <name>` | ROCK 项目空间（默认从 `ROCK_NAMESPACE` / `~/.rock/settings.json` 读取） |
+
+### 执行控制
+
+| 参数 | 说明 |
+|------|------|
+| `--concurrency <N>` | 多任务/全量任务并发数，默认 1，上限 100 |
+| `--limit <N>` | 限制多任务/全量任务数量 |
+| `--mode <type>` | `local`（默认）或 `remote`（在 launcher 沙箱中运行） |
+| `--remote-cluster <id>` | remote launcher 集群覆盖 |
+| `--metadata <type>` | ROCK 元数据后端：`none`（默认）、`local`、`oss` |
+| `--metadata-dir <path>` | local 元数据目录（默认 `~/.rock/jobs`） |
 | `--pre` | 使用预发环境 |
 | `--async` | 异步模式：提取 sandbox_id 后退出 |
+| `--quiet` | 后台执行，日志持久化到文件 |
+| `--dry-run` | 只生成并展示最终配置，不执行 |
+| `--with <name>` | 启用陪跑助手（当前支持 `claude-code`） |
 | `--ee <KEY=VALUE>` | 沙箱环境变量，可多次指定 |
 | `--set <path=value>` | YAML 字段覆盖，数组用 `.数字` 表示下标 |
+| `--auto-clear <sec>` | 自动清理时间（秒） |
+
+### 使用示例
 
 ```bash
 # Config 模式：从本地 YAML 文件运行
@@ -50,12 +73,45 @@ rockcli agent run --bench aone-bench --task codereview-20789198
 # Bench 模式：指定 Agent 和 Model
 rockcli agent run --bench aone-bench --task codereview-20789198 --agent claude-code --model claude-sonnet-4-6
 
+# 多任务并发
+rockcli agent run --config job.yaml --tasks task-1 task-2 --concurrency 2
+
+# 全量任务（必须显式传 --all）
+rockcli agent run --config job.yaml --all --concurrency 2 --limit 10
+
+# 全量 + 元数据（支持断点重跑）
+rockcli agent run --config job.yaml --all --metadata local --metadata-dir /tmp/rock-meta
+
+# 断点重跑
+rockcli agent run --config job.yaml --resume 20260710T130922-f16c39a9 --metadata local
+
+# 远程执行（在 launcher 沙箱中）
+rockcli agent run --config job.yaml --all --mode remote --remote-cluster vpc-sg-a
+
+# 远程断点重跑 + OSS 元数据
+rockcli agent run --config job.yaml --resume 20260710T130922-f16c39a9 --metadata oss --pre --mode remote
+
 # 异步模式（提交后立即返回 sandbox_id）
 rockcli agent run --config job.yaml --async
+
+# Claude Code 陪跑
+rockcli agent run --bench aone-bench --task codereview-20789198 --with claude-code
 
 # 注入沙箱环境变量
 rockcli agent run --config job.yaml --ee API_KEY=sk-xxx --ee DEBUG=1
 ```
+
+### 行为说明
+
+- `--task`、`--tasks`、`--all`、`--resume` 互斥
+- Config YAML 含多个 `task_names` 时无需再传 `--tasks`
+- 全量任务不会隐式推断，必须显式传 `--all`
+- `--metadata local` 默认使用 `~/.rock/jobs`，只适合当前机器；`oss` 适合跨机器
+- resume 必须选择与原 run 相同的 metadata 后端
+- `--mode remote` 在 launcher 沙箱中执行，当前不支持 `--quiet`/`--async`/`--with`
+- Bash Job（配置含 `script`/`script_path`）会把任务选择显式转发给底层 ROCK
+- 沙箱参数优先级：命令参数/`--set` > config.yaml > `ROCK_*` 环境变量 > 内置默认值
+- `-vvv` 会在执行前打印 shell-safe 的最终 ROCK 命令
 
 ---
 
@@ -80,6 +136,12 @@ rockcli agent view [选项]
 | `-o, --output <format>` | 输出格式：table, json, simple（默认 table） |
 | `--limit <num>` | Jobs 列表每页返回条数（默认 20） |
 | `--offset <num>` | Jobs 列表跳过前 N 条（默认 0） |
+| `--q <text>` | 全文搜索（experiments / jobs / tasks） |
+| `--agent <name>` | Agent 名过滤（可重复） |
+| `--provider <name>` | Provider 名过滤（可重复） |
+| `--model <name>` | Model 名过滤（可重复，格式 `provider/model`） |
+| `--date <range>` | 日期范围：`today`、`week`、`month` |
+| `--sort <field:dir>` | 排序（字段：task_name/agent_name/avg_reward/avg_duration_ms 等） |
 
 ### 使用示例（逐级钻取）
 
@@ -90,21 +152,33 @@ rockcli agent view -E
 # 2. 列举指定实验的 Jobs
 rockcli agent view -e exp-id
 
-# 3. 查看 Jobs 下一页
+# 3. 按条件过滤和排序
+rockcli agent view -e exp-id --agent claude-code --date today --sort avg_reward:desc
+
+# 4. 全文搜索
+rockcli agent view -e exp-id --q "codereview"
+
+# 5. 查看 Jobs 下一页
 rockcli agent view -e exp-id --limit 20 --offset 20
 
-# 4. 查看某个 Job 详情（含 tasks 列表）
+# 6. 查看某个 Job 详情（含 tasks 列表）
 rockcli agent view -j my-job
 
-# 5. 查看某个 Task 下的 Trials
+# 7. 查看某个 Task 下的 Trials
 rockcli agent view -j my-job -t my-task
 
-# 6. 查看某个 Trial 详情
+# 8. 查看某个 Trial 详情
 rockcli agent view -j my-job -t my-task -T trial-001
 
-# 7. 查看 Trial 完整执行轨迹
+# 9. 查看 Trial 完整执行轨迹
 rockcli agent view -j my-job --trajectory
 ```
+
+### 行为说明
+
+- `view -j J` 若只查到一个 task，会内联列出 trials 并展开首个 trial 的 Outcome/Tokens/Timing
+- 查不到结构化元数据时，退避展示 job root 文件预览和 `agent fs` 下一步命令
+- tasks 视图可推导时附上 Rock Console job 链接（pre 环境追加 `?env=pre`）
 
 ---
 
@@ -244,4 +318,15 @@ rockcli agent deps sync
 
 # 强制重新安装
 rockcli agent deps sync benchhub --force
+```
+
+---
+
+## bench
+
+管理 benchhub 模板。
+
+```bash
+# 列出可用 bench 模板
+rockcli agent bench list
 ```
